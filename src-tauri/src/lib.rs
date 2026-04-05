@@ -222,8 +222,18 @@ pub fn run() {
                     let y = position.y + size.height as i32 - win_size.height as i32 - 15;
                     
                     let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
-                    // Window will be shown by App.tsx once it's ready, or we can show it here
-                    // Let's show it here for immediate feedback since we already positioned it.
+                    
+                    // Global Overlay Configuration
+                    let _ = window.set_always_on_top(true);
+                    let _ = window.set_skip_taskbar(true); // Don't show in Dock as a separate app window
+                    
+                    // Enable visibility on all virtual desktops (Spaces) on macOS
+                    #[cfg(target_os = "macos")]
+                    {
+                        use tauri::window::WindowCollectionBehavior;
+                        let _ = window.set_window_collection_behavior(WindowCollectionBehavior::CAN_JOIN_ALL_SPACES | WindowCollectionBehavior::STATIONARY | WindowCollectionBehavior::IGNORES_CYCLE);
+                    }
+
                     let _ = window.show();
                 }
             }
