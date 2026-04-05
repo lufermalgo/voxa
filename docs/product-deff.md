@@ -1,10 +1,10 @@
-# Documento de Requerimientos de Producto
-## Aplicación de Dictado por Voz para macOS — Versión Inicial
+# Voxa — Product Requirements Document
+## Privacy-First Dictation for macOS
 
-**Estado:** Borrador para revisión de Producto y Desarrollo  
-**Plataforma inicial:** macOS  
-**Expansión futura prevista:** Windows  
-**Objetivo del documento:** definir el propósito del proyecto y los requerimientos funcionales y no funcionales de la aplicación, sin imponer decisiones técnicas de implementación.
+**Status:** V1.0 - Implemented  
+**Platform:** macOS (initial) / Windows (planned)  
+**Repository:** [lufermalgo/voxa](https://github.com/lufermalgo/voxa.git)
+**Objective:** Define the core purpose and functional requirements for Voxa, ensuring a high-density, privacy-centric user experience.
 
 ---
 
@@ -281,7 +281,18 @@ Los cambios realizados por el usuario en idioma, micrófono, modo, shortcut, tip
 
 ## 6. Requerimientos no funcionales
 
-## 6.1 Usabilidad
+## 6.1 Privacidad y Procesamiento Local
+
+### RNF-000 — Local-First Intelligence (CRITICAL)
+Todo el procesamiento de audio (Speech-to-Text) y refinamiento de texto (LLM) debe ocurrir localmente en el dispositivo del usuario. La aplicación no debe enviar datos de audio a servidores externos.
+
+### RNF-016 — Technical Stack
+- **Backend**: Rust (Tauri) para máxima performance y seguridad.
+- **Frontend**: React + Tailwind CSS + Framer Motion para una UI fluida.
+- **STT**: `faster-whisper` o similar (vía motor local).
+- **LLM**: Ollama o motor local equivalente para transformación de perfiles.
+
+## 6.2 Usabilidad
 
 ### RNF-001 — Facilidad de configuración
 La configuración inicial de la aplicación debe ser comprensible y ejecutable por un usuario no técnico.

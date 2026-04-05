@@ -11,19 +11,24 @@ This document defines the visual and functional requirements for the **Voxa** di
 
 The Pill is the primary interaction point. It must feel like an organic part of the macOS experience.
 
-### Visual States
+### Visual States (Implemented)
 
-- **Idle (Hidden/Compact)**: A tiny, semi-transparent bar at the bottom center of the screen (or draggable).
-- **Listening (Active)**:
-  - Expands into a rounded pill (Glassmorphism: `backdrop-blur-xl`, `bg-white/5`, `border-white/10`).
-  - **Animation**: A subtle, glowing waveform pulse that matches the audio input volume.
-  - **Text**: Display "Escuchando..." in tiny, wide-spaced caps.
-- **Processing**:
-  - Waveform transforms into a sleek, infinite loading gradient (shimmer effect).
-  - **Text**: "Procesando con Llama-3..."
-- **Success/Done**:
-  - Brief green "tick" or glow animation.
-  - The Pill collapses back to Idle.
+- **Idle (Ultra-Compact)**: 
+  - **Dimensions**: `h-[6px] w-[40px]`
+  - **Style**: Minimalist bar with `obsidian-glass` and 5-bar subtle animation.
+- **Recording (Balanced Compact)**:
+  - **Dimensions**: `h-7` (28px) — Calibrated "Sweet Spot".
+  - **Style**: `obsidian-glass`, `ring-1 ring-black/50`, `px-2`.
+  - **Icons**: `16px` for optimal ergonomics.
+- **Loading (Initialization)**:
+  - **Dimensions**: `h-8` (32px).
+  - **Style**: Spinning primary-colored indicator with "Loading..." text.
+
+### Positioning & Constraints
+
+- **Window Size**: The floating window is constrained to `300x80` to prevent interference, but the elements remain hyper-compact.
+- **Screen Offset**: Fixed **15px offset** from the bottom limit of the monitor (Dock-aware), ensuring visibility above the macOS taskbar.
+- **Startup**: Window starts with `visible: false` and is shown via Rust setup to prevent centering flickers.
 
 ### Interactions
 
