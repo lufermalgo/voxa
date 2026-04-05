@@ -50,7 +50,7 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
   if (isRecording) {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="obsidian-glass h-8 px-2 rounded-full flex items-center gap-1.5 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50">
+        <div className="obsidian-glass h-10 px-3 rounded-full flex items-center gap-2 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5" />
           
           <button 

@@ -43,7 +43,7 @@ A monochromatic icon in the macOS menu bar (Top Right).
 
 ### Icons
 
-- **Recording**: Balanced minimalist capsule (`h-8`, `px-2`). Feature-rich but compact.
+- **Recording**: Balanced minimalist capsule (`h-10`, `px-3`). Feature-rich but compact.
 - **States**: Glows slightly when recording is active.
 
 ### Dropdown Menu
