@@ -1,10 +1,16 @@
+#[cfg(target_os = "macos")]
+#[macro_use]
+extern crate objc;
+
 mod audio;
 mod db;
+mod llama_inference;
 mod models;
 mod whisper_inference;
-mod llama_inference;
+mod window_utils;
 
-use audio::AudioEngine;
+use crate::audio::AudioEngine;
+use crate::models::ModelManager;
 use db::{Transcript, DbState};
 use tauri::{Manager, State, AppHandle, Emitter};
 use std::sync::{Mutex, mpsc, atomic::AtomicBool};
@@ -213,15 +219,18 @@ pub fn run() {
             // Position main window at the bottom center of the screen (Dock-aware)
             if let Some(window) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = window.primary_monitor() {
-                    let size = monitor.size();
-                    let position = monitor.position();
-                    let win_size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(300, 160));
+                    let monitor_size = monitor.size();
+                    let monitor_pos = monitor.position();
+                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(300, 160));
                     
-                    let x = position.x + (size.width as i32 / 2) - (win_size.width as i32 / 2);
-                    // Use total height minus window height, plus a bit of padding for the dock
-                    let y = position.y + size.height as i32 - win_size.height as i32 - 15;
+                    let new_pos = window_utils::calculate_pill_position(
+                        *monitor_size,
+                        *monitor_pos,
+                        win_size,
+                        15 // padding bottom
+                    );
                     
-                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                    let _ = window.set_position(tauri::Position::Physical(new_pos));
                     
                     // Global Overlay Configuration
                     let _ = window.set_always_on_top(true);
@@ -230,8 +239,18 @@ pub fn run() {
                     // Enable visibility on all virtual desktops (Spaces) on macOS
                     #[cfg(target_os = "macos")]
                     {
-                        use tauri::window::WindowCollectionBehavior;
-                        let _ = window.set_window_collection_behavior(WindowCollectionBehavior::CAN_JOIN_ALL_SPACES | WindowCollectionBehavior::STATIONARY | WindowCollectionBehavior::IGNORES_CYCLE);
+                        use cocoa::appkit::{NSWindow, NSWindowCollectionBehavior};
+                        
+                        // We use ns_window() which is available because we have "macos-private-api" feature enabled
+                        if let Ok(ns_window) = window.ns_window() {
+                            unsafe {
+                                let collection_behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces 
+                                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary 
+                                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
+                                
+                                let () = msg_send![ns_window as cocoa::base::id, setCollectionBehavior: collection_behavior];
+                            }
+                        }
                     }
 
                     let _ = window.show();
