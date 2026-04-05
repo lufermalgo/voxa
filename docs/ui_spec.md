@@ -43,7 +43,7 @@ A monochromatic icon in the macOS menu bar (Top Right).
 
 ### Icons
 
-- **Icon**: A minimalist waveform or a stylized "V".
+- **Recording**: Balanced minimalist capsule (`h-8`, `px-2`). Feature-rich but compact.
 - **States**: Glows slightly when recording is active.
 
 ### Dropdown Menu
