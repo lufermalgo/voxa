@@ -1,0 +1,54 @@
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+
+export type PipelineStatus = "idle" | "recording" | "processing" | "refining" | "loading_whisper" | "loading_llama" | "done";
+
+export function useTranscription() {
+  const [status, setStatus] = useState<PipelineStatus>("idle");
+  const [rawText, setRawText] = useState("");
+  const [refinedText, setRefinedText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unlistenStatus = listen<string>("pipeline-status", (event) => {
+      setStatus(event.payload as PipelineStatus);
+    });
+
+    const unlistenRaw = listen<string>("pipeline-text-raw", (event) => {
+      setRawText(event.payload);
+    });
+
+    const unlistenResults = listen<string>("pipeline-results", (event) => {
+      setRefinedText(event.payload);
+      setStatus("done");
+      // Reset back to idle after a timeout
+      setTimeout(() => setStatus("idle"), 3000);
+    });
+
+    const unlistenError = listen<string>("pipeline-error", (event) => {
+      console.error("Pipeline Error:", event.payload);
+      setError(event.payload);
+      setStatus("idle");
+      // Clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
+    });
+
+    return () => {
+      unlistenStatus.then((f) => f());
+      unlistenRaw.then((f) => f());
+      unlistenResults.then((f) => f());
+      unlistenError.then((f) => f());
+    };
+  }, []);
+
+  const downloadModels = async () => {
+    try {
+      await invoke("download_models");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  return { status, rawText, refinedText, error, downloadModels };
+}

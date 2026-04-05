@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #131314;
+  --color-on-surface: #e5e2e3;
+  --color-on-surface-variant: #cac4d5;
+  --color-primary: #cbbeff;
+  --color-primary-container: #9d85ff;
+  --color-surface-container-low: #1c1b1c;
+  --color-surface-container-high: #2a2a2b;
+  --color-surface-container-highest: #353436;
+  --color-error: #ffb4ab;
+  --color-on-primary: #330b91;
+  --color-primary-fixed: #e7deff;
+  --color-primary-fixed-dim: #cbbeff;
+  --color-tertiary-fixed-dim: #c6c6c6;
+  --color-on-primary-fixed: #1e0061;
+  
+  --font-headline: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+:root {
+  background-color: transparent;
+  color: var(--on-surface);
+  font-family: var(--font-body);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: transparent !important;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+}
+
+.mac-blur {
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+.obsidian-glass {
+  background: rgba(19, 19, 20, 0.7);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+  font-size: 18px;
+}
+
+.material-symbols-fill {
+  font-variation-settings: 'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+}
+
+.waveform-aura {
+  filter: drop-shadow(0 0 4px rgba(203, 190, 255, 0.3));
+}
+
+/* Custom Scrollbar for Obsidian Menu */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes wave-pulse-recording {
+  0%, 100% { height: 40%; opacity: 0.4; }
+  50% { height: 100%; opacity: 1; }
+}
+
+.animate-wave-recording {
+  animation: wave-pulse-recording 1.2s ease-in-out infinite;
+}
+
+/* Exact IDLE pulse from mock */
+@keyframes wave-pulse {
+  0%, 100% { height: 1px; opacity: 0.4; }
+  50% { height: 4px; opacity: 1; }
+}
+
+.animate-wave {
+  animation: wave-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

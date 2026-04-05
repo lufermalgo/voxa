@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "voxa",
+  "version": "0.1.0",
+  "identifier": "com.lufermalgo.voxa",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Voxa",
+        "width": 300,
+        "height": 160,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "resizable": false,
+        "fullscreen": false
+      },
+      {
+        "label": "settings",
+        "title": "Voxa Settings",
+        "width": 800,
+        "height": 600,
+        "decorations": true,
+        "transparent": false,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "tray_menu",
+        "title": "Voxa Menu",
+        "width": 360,
+        "height": 500,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "exceptionDomain": "",
+      "entitlements": null,
+      "infoPlist": "Info.plist"
+    }
+  }
+}
