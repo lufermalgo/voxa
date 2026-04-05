@@ -17,9 +17,10 @@ The Pill is the primary interaction point. It must feel like an organic part of 
   - **Dimensions**: `h-[6px] w-[40px]`
   - **Style**: Minimalist bar with `obsidian-glass` and 5-bar subtle animation.
 - **Recording (Balanced Compact)**:
-  - **Dimensions**: `h-7` (28px) — Calibrated "Sweet Spot".
-  - **Style**: `obsidian-glass`, `ring-1 ring-black/50`, `px-2`.
-  - **Icons**: `16px` for optimal ergonomics.
+  - **Dimensions**: `h-10` (40px) height, naturally sized.
+  - **Style**: `obsidian-glass`, `ring-1 ring-black/50`, `px-4`, `gap-3`.
+  - **Icons**: `20px` for optimal ergonomics.
+  - **Waveform**: 18-bar dynamic visualization (`h-5`).
 - **Loading (Initialization)**:
   - **Dimensions**: `h-8` (32px).
   - **Style**: Spinning primary-colored indicator with "Loading..." text.
@@ -43,7 +44,7 @@ A monochromatic icon in the macOS menu bar (Top Right).
 
 ### Icons
 
-- **Recording**: Balanced minimalist capsule (`h-10`, `px-3`). Feature-rich but compact.
+- **Recording**: Balanced minimalist capsule (`h-10`, `px-4`). Feature-rich but compact.
 - **States**: Glows slightly when recording is active.
 
 ### Dropdown Menu

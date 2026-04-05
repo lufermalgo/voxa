@@ -50,27 +50,27 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
   if (isRecording) {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="obsidian-glass h-10 px-3 rounded-full flex items-center gap-2 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50">
+        <div className="obsidian-glass h-10 px-4 rounded-full flex items-center gap-3 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50 justify-center">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5" />
           
           <button 
             onClick={() => invoke("stop_recording")}
             className="flex-shrink-0 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer group"
           >
-            <span className="material-symbols-outlined !text-[16px] group-hover:scale-110 transition-transform">close</span>
+            <span className="material-symbols-outlined !text-[20px] group-hover:scale-110 transition-transform">close</span>
           </button>
 
-          <div className="flex items-center gap-[1.5px] h-2.5 waveform-aura">
-            {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 0.7, 0.8].map((delay, i) => (
+          <div className="flex items-center gap-[2px] h-5 waveform-aura">
+            {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8].map((delay, i) => (
               <div 
                 key={i}
-                className={`w-[1.5px] rounded-full animate-wave-recording ${
-                  i < 2 || i > 11 ? 'bg-tertiary-fixed-dim/40' : 
-                  i === 2 || i === 12 ? 'bg-tertiary-fixed-dim/60' : 'bg-primary-fixed'
+                className={`w-[2px] rounded-full animate-wave-recording ${
+                  i < 3 || i > 14 ? 'bg-tertiary-fixed-dim/40' : 
+                  i === 3 || i === 15 ? 'bg-tertiary-fixed-dim/60' : 'bg-primary-fixed'
                 }`}
                 style={{ 
                   animationDelay: `${delay}s`,
-                  height: i === 7 ? '100%' : i % 2 === 0 ? '50%' : '75%' 
+                  height: i === 9 ? '100%' : i % 2 === 0 ? '50%' : '75%' 
                 }} 
               />
             ))}
@@ -80,7 +80,7 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
             onClick={handleStop}
             className="flex-shrink-0 flex items-center justify-center text-primary-container hover:text-primary transition-colors cursor-pointer group"
           >
-            <span className="material-symbols-outlined !text-[16px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
+            <span className="material-symbols-outlined !text-[20px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
           </button>
 
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
