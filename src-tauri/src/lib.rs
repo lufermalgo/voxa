@@ -74,6 +74,8 @@ fn update_setting(app: tauri::AppHandle, state: tauri::State<DbState>, key: Stri
     Ok(())
 }
 
+
+
 #[tauri::command]
 async fn get_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {
     audio::get_input_devices()
@@ -378,16 +380,10 @@ pub fn run() {
             let icon_bytes = include_bytes!("../icons/tray-icon.png");
             let tray_icon = tauri::image::Image::from_bytes(icon_bytes)?;
 
-            let dot_bytes = include_bytes!("../icons/green-dot.png");
-            let dot_icon = tauri::image::Image::from_bytes(dot_bytes)?;
-
-            let status_label = if is_es { "Voxa está listo" } else { "Voxa is Ready" };
             let settings_label = if is_es { "Configuración..." } else { "Settings..." };
             let quit_label = if is_es { "Salir de Voxa" } else { "Quit Voxa" };
 
             let tray_menu = Menu::with_items(app.handle(), &[
-                &IconMenuItem::with_id(app.handle(), "status", status_label, true, Some(dot_icon), None::<&str>)?,
-                &PredefinedMenuItem::separator(app.handle())?,
                 &profiles_menu,
                 &mic_menu,
                 &language_menu,
@@ -401,7 +397,7 @@ pub fn run() {
             let mic_menu_c = mic_menu.clone();
             let language_menu_c = language_menu.clone();
 
-            let tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
                 .menu(&tray_menu)
                 .on_menu_event(move |app, event| {
