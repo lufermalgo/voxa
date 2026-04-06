@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <canvas id="canvas" width="512" height="512"></canvas>
+  <script>
+    // Load the SVG from the same directory
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Clear with transparency
+      ctx.clearRect(0, 0, 512, 512);
+      
+      // Draw centered. voxa_logo.svg is 600x600.
+      // We want to fill the 512x512 nicely.
+      const targetSize = 512;
+      const svgOriginalSize = 600;
+      const padding = 20;
+      const availableSize = targetSize - padding * 2;
+      const scale = availableSize / svgOriginalSize;
+      
+      const w = svgOriginalSize * scale;
+      const h = svgOriginalSize * scale;
+      const x = (targetSize - w) / 2;
+      const y = (targetSize - h) / 2;
+      
+      ctx.drawImage(img, x, y, w, h);
+      
+      try {
+        window.renderedData = canvas.toDataURL('image/png');
+        console.log('RENDER_COMPLETE');
+      } catch (e) {
+        console.error('SEC_ERROR: ' + e.message);
+      }
+    };
+    img.onerror = () => console.error('IMG_ERROR');
+    // Using an absolute-ish path relative to the workspace Root
+    img.src = '/public/voxa_logo.svg'; 
+  </script>
+</body>
+</html>

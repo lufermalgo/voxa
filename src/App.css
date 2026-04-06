@@ -4,10 +4,10 @@
   --color-background: #fbfbff;
   --color-on-surface: #121417;
   --color-on-surface-variant: #454749;
-  --color-primary: #9D85FF;
+  --color-primary: #9D7AFF;
   --color-primary-container: #8266ff;
   --color-primary-hover: #7b61f2;
-  --color-accent: #9D85FF;
+  --color-accent: #9D7AFF;
   --color-secondary: #5078e8;
   --color-tertiary: #C0C0C0;
   
@@ -22,7 +22,7 @@
   --color-on-primary: #ffffff;
   --color-on-error: #ffffff;
   
-  --color-primary-rgb: 157, 133, 255;
+  --color-primary-rgb: 157, 122, 255;
   
   --font-headline: 'Manrope', sans-serif;
   --font-body: 'Inter', sans-serif;

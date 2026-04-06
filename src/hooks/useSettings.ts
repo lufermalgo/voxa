@@ -51,23 +51,17 @@ export function useSettings() {
     fetchSettings();
 
     // Listen for updates from other windows/backend
-    const unlistenSettings = invoke("get_settings").then(() => {
-      return import("@tauri-apps/api/event").then(({ listen }) => {
-        return listen("settings-updated", () => {
-          fetchSettings();
-        });
-      });
-    });
+    const unlistenSettings = import("@tauri-apps/api/event").then(({ listen }) =>
+      listen("settings-updated", () => fetchSettings())
+    );
 
-    const unlistenProfiles = import("@tauri-apps/api/event").then(({ listen }) => {
-      return listen("profiles-updated", () => {
-        fetchSettings();
-      });
-    });
+    const unlistenProfiles = import("@tauri-apps/api/event").then(({ listen }) =>
+      listen("profiles-updated", () => fetchSettings())
+    );
 
     return () => {
-      unlistenSettings.then(u => u.then(f => f()));
-      unlistenProfiles.then(f => f());
+      unlistenSettings.then(unlisten => unlisten());
+      unlistenProfiles.then(unlisten => unlisten());
     };
   }, [fetchSettings]);
 

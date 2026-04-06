@@ -207,15 +207,21 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   return (
     <div className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
       <header className="flex items-center justify-between p-8 glass-panel">
-        <div className="flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl cta-gradient flex items-center justify-center">
-            <span className="material-symbols-outlined text-white font-black text-2xl material-symbols-fill">graphic_eq</span>
+        <div className="flex items-center gap-6">
+          <div className="w-14 h-14 rounded-[1.25rem] bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1.5" y="7" width="3" height="10" rx="1.5" fill="white" />
+              <rect x="6" y="4" width="3" height="16" rx="1.5" fill="white" />
+              <rect x="10.5" y="1" width="3" height="22" rx="1.5" fill="white" />
+              <rect x="15" y="4" width="3" height="16" rx="1.5" fill="white" />
+              <rect x="19.5" y="7" width="3" height="10" rx="1.5" fill="white" />
+            </svg>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-on-surface tracking-widest font-headline">Voxa</h1>
-            <div className="flex items-center gap-2.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <p className="font-label">{t.app_subtitle}</p>
+            <h1 className="text-2xl font-black text-on-surface tracking-[0.3em] font-headline uppercase leading-none">Voxa</h1>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="w-2 h-2 rounded-full bg-primary/40" />
+              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em] opacity-70 leading-none">{t.app_subtitle}</p>
             </div>
           </div>
         </div>

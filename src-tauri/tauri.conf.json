@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "voxa",
+  "productName": "Voxa",
   "version": "1.0.0",
   "identifier": "com.lufermalgo.voxa",
   "build": {
@@ -44,8 +44,7 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.icns",
-      "icons/tray-icon.png"
+      "icons/icon.icns"
     ],
     "macOS": {
       "frameworks": [],
