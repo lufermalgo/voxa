@@ -1,14 +1,18 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Locale, translations } from "../i18n";
 
 interface RecorderPillProps {
   status: string;
+  label?: string;
+  uiLocale: Locale;
 }
 
-export const RecorderPill = ({ status }: RecorderPillProps) => {
+export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderPillProps) => {
   const [duration, setDuration] = useState(0);
   const isRecording = status === "recording";
-  const isLoading = status === "loading";
+  const isLoading = status === "loading" || status === "loading_whisper" || status === "loading_llama";
+  const t = translations[uiLocale];
 
   useEffect(() => {
     let interval: number;
@@ -37,11 +41,40 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
   };
 
   if (isLoading) {
+    const defaultLabel = status === "loading_whisper" || status === "loading_llama" || status === "loading"
+      ? t.processing
+      : t.loading;
+    const label = customLabel || defaultLabel;
+    
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="obsidian-glass h-8 px-4 rounded-full flex items-center gap-2 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50">
-          <div className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <span className="text-[9px] font-bold text-primary tracking-[0.15em] uppercase">Loading...</span>
+        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
+          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope whitespace-nowrap">{label}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "processing" || status === "refining") {
+    const label = t.processing;
+    return (
+      <div className="animate-in fade-in zoom-in-95 duration-500">
+        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center justify-center gap-2 shadow-2xl relative overflow-hidden">
+          <div className="absolute inset-0 bg-white/10 animate-pulse" />
+          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin relative z-10" />
+          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope relative z-10 whitespace-nowrap">{label}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "done") {
+    return (
+      <div className="animate-in fade-in zoom-in-95 duration-500">
+        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
+          <span className="material-symbols-outlined text-white !text-[18px] animate-in zoom-in duration-300">check_circle</span>
+          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope">{t.sent}</span>
         </div>
       </div>
     );
@@ -50,23 +83,23 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
   if (isRecording) {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="obsidian-glass h-10 px-4 rounded-full flex items-center gap-3 shadow-2xl border border-white/10 relative overflow-hidden ring-1 ring-black/50 justify-center">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5" />
+        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px]">
+          <div className="absolute inset-0 bg-white/5" />
           
           <button 
             onClick={() => invoke("stop_recording")}
-            className="flex-shrink-0 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer group"
+            className="flex-shrink-0 flex items-center justify-center text-white/70 hover:text-white transition-colors cursor-pointer group"
           >
             <span className="material-symbols-outlined !text-[20px] group-hover:scale-110 transition-transform">close</span>
           </button>
 
-          <div className="flex items-center gap-[2px] h-5 waveform-aura">
+          <div className="flex items-center gap-[2px] h-5">
             {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8].map((delay, i) => (
               <div 
                 key={i}
                 className={`w-[2px] rounded-full animate-wave-recording ${
-                  i < 3 || i > 14 ? 'bg-tertiary-fixed-dim/40' : 
-                  i === 3 || i === 15 ? 'bg-tertiary-fixed-dim/60' : 'bg-primary-fixed'
+                  i < 3 || i > 14 ? 'bg-white/40' : 
+                  i === 3 || i === 15 ? 'bg-white/60' : 'bg-white'
                 }`}
                 style={{ 
                   animationDelay: `${delay}s`,
@@ -78,34 +111,32 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
 
           <button 
             onClick={handleStop}
-            className="flex-shrink-0 flex items-center justify-center text-primary-container hover:text-primary transition-colors cursor-pointer group"
+            className="flex-shrink-0 flex items-center justify-center text-white/90 hover:text-white transition-colors cursor-pointer group"
           >
             <span className="material-symbols-outlined !text-[20px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
           </button>
 
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-             <span className="text-[9px] font-mono text-primary/60 tracking-wider font-bold">{formatTime(duration)}</span>
+             <span className="text-[9px] font-mono text-white/60 tracking-wider font-bold">{formatTime(duration)}</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // IDLE STATE - Exact from mock
+  // IDLE STATE - Solid Violet Pill (6px height)
   return (
     <div className="animate-in fade-in zoom-in-95 duration-500">
       <div 
         onClick={handleStart}
-        className="obsidian-glass h-[6px] w-[40px] rounded-full flex items-center justify-center shadow-2xl border border-white/5 relative cursor-pointer overflow-hidden transition-transform"
+        className="bg-primary h-[6px] w-[40px] rounded-voxa flex items-center justify-center shadow-lg hover:shadow-xl relative cursor-pointer overflow-hidden transition-all hover:scale-110 hover:h-[8px] group"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-primary/10 rounded-full" />
-        
-        <div className="flex items-center gap-[1.5px] h-full waveform-aura">
+        <div className="flex items-center gap-[1.5px] h-full relative z-10">
           {[0.2, 0.4, 0.6, 0.8, 1.0].map((delay, i) => (
             <div 
               key={i}
               className={`w-[1.5px] h-[1px] rounded-full animate-wave ${
-                i === 0 || i === 4 ? 'bg-primary-fixed/50' : 'bg-primary-fixed'
+                i === 0 || i === 4 ? 'bg-white/40' : 'bg-white'
               }`}
               style={{ animationDelay: `${delay}s` }} 
             />
@@ -115,3 +146,4 @@ export const RecorderPill = ({ status }: RecorderPillProps) => {
     </div>
   );
 };
+

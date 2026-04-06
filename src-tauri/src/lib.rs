@@ -10,13 +10,13 @@ mod whisper_inference;
 mod window_utils;
 
 use crate::audio::AudioEngine;
-use crate::models::ModelManager;
 use db::{Transcript, DbState};
 use tauri::{Manager, State, AppHandle, Emitter};
 use std::sync::{Mutex, mpsc, atomic::AtomicBool};
 use rusqlite::params;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, IconMenuItem, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
+use sys_locale::get_locale;
 
 #[cfg(target_os = "macos")]
 fn simulate_paste() {
@@ -25,6 +25,10 @@ fn simulate_paste() {
         .arg("tell application \"System Events\" to keystroke \"v\" using command down")
         .spawn();
 }
+
+// Vibrancy for the Pill and Settings is managed via Tauri's window configuration.
+// The native macOS tray menu handles its own appearance according to system settings.
+
 
 #[cfg(not(target_os = "macos"))]
 fn simulate_paste() {
@@ -63,9 +67,11 @@ async fn get_settings(state: State<'_, DbState>) -> Result<std::collections::Has
 }
 
 #[tauri::command]
-async fn update_setting(state: State<'_, DbState>, key: String, value: String) -> Result<(), String> {
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    db::update_setting(&conn, &key, &value).map_err(|e| e.to_string())
+fn update_setting(app: tauri::AppHandle, state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.conn.lock().unwrap();
+    db::update_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
+    let _ = app.emit("settings-updated", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -96,8 +102,30 @@ async fn add_to_dictionary(state: State<'_, DbState>, word: String) -> Result<()
 #[tauri::command]
 async fn remove_from_dictionary(state: State<'_, DbState>, word: String) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM custom_dict WHERE word = ?1", params![word])
-        .map_err(|e| e.to_string())?;
+    db::remove_from_dictionary(&conn, &word).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_profile(app: tauri::AppHandle, state: tauri::State<DbState>, id: i64, name: String, prompt: String, icon: Option<String>) -> Result<(), String> {
+    let conn = state.conn.lock().unwrap();
+    db::update_profile(&conn, id, &name, &prompt, icon).map_err(|e| e.to_string())?;
+    let _ = app.emit("profiles-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn create_profile(app: tauri::AppHandle, state: tauri::State<DbState>, name: String, prompt: String, icon: Option<String>) -> Result<i64, String> {
+    let conn = state.conn.lock().unwrap();
+    let id = db::create_profile(&conn, &name, &prompt, icon).map_err(|e| e.to_string())?;
+    let _ = app.emit("profiles-updated", ());
+    Ok(id)
+}
+
+#[tauri::command]
+fn delete_profile(app: tauri::AppHandle, state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.conn.lock().unwrap();
+    db::delete_profile(&conn, id).map_err(|e| e.to_string())?;
+    let _ = app.emit("profiles-updated", ());
     Ok(())
 }
 
@@ -207,6 +235,16 @@ fn show_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn get_system_locale() -> String {
+    get_locale()
+        .unwrap_or_else(|| "en".to_string())
+        .split('-')
+        .next()
+        .unwrap_or("en")
+        .to_string()
+}
+
+#[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -227,7 +265,7 @@ pub fn run() {
                         *monitor_size,
                         *monitor_pos,
                         win_size,
-                        15 // padding bottom
+                        10 // padding bottom
                     );
                     
                     let _ = window.set_position(tauri::Position::Physical(new_pos));
@@ -239,7 +277,7 @@ pub fn run() {
                     // Enable visibility on all virtual desktops (Spaces) on macOS
                     #[cfg(target_os = "macos")]
                     {
-                        use cocoa::appkit::{NSWindow, NSWindowCollectionBehavior};
+                        use cocoa::appkit::NSWindowCollectionBehavior;
                         
                         // We use ns_window() which is available because we have "macos-private-api" feature enabled
                         if let Ok(ns_window) = window.ns_window() {
@@ -251,81 +289,115 @@ pub fn run() {
                                 let () = msg_send![ns_window as cocoa::base::id, setCollectionBehavior: collection_behavior];
                             }
                         }
-                    }
 
-                    let _ = window.show();
+                        // No native vibrancy here, use CSS
+                    }
                 }
-            }
-
-            let _tray_menu = Menu::with_items(app.handle(), &[
-                &MenuItem::with_id(app.handle(), "status", "Voxa is Ready", true, None::<&str>)?,
-                &MenuItem::with_id(app.handle(), "profiles", "Profiles...", true, None::<&str>)?,
-                &MenuItem::with_id(app.handle(), "language", "Language...", true, None::<&str>)?,
-                &tauri::menu::PredefinedMenuItem::separator(app.handle())?,
-                &MenuItem::with_id(app.handle(), "settings", "Settings...", true, None::<&str>)?,
-                &MenuItem::with_id(app.handle(), "dictionary", "Dictionary...", true, None::<&str>)?,
-                &tauri::menu::PredefinedMenuItem::quit(app.handle(), None)?,
-            ])?;
-
-            let tray_icon = tauri::image::Image::from_path("icons/tray-icon.png")?;
-
-            let _tray = TrayIconBuilder::new()
-                .icon(tray_icon)
-                .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click { 
-                        button: tauri::tray::MouseButton::Left, 
-                        button_state: tauri::tray::MouseButtonState::Up, 
-                        rect, 
-                        .. 
-                    } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("tray_menu") {
-                            let scale_factor = window.scale_factor().unwrap_or(1.0);
-                            
-                            let pos = match rect.position {
-                                tauri::Position::Physical(p) => p.to_logical::<f64>(scale_factor),
-                                tauri::Position::Logical(p) => p,
-                            };
-                            let size = match rect.size {
-                                tauri::Size::Physical(s) => s.to_logical::<f64>(scale_factor),
-                                tauri::Size::Logical(s) => s,
-                            };
-
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            if is_visible {
-                                let _ = window.hide();
-                            } else {
-                                // Positioning: Center under the tray icon
-                                let window_size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(360, 500)).to_logical::<f64>(scale_factor);
-                                
-                                let x = pos.x + (size.width / 2.0) - (window_size.width / 2.0);
-                                let y = pos.y + size.height + 5.0; // 5px padding
-                                
-                                let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                    }
-                })
-                .build(app)?;
-
-            // Setup blur listener for tray menu to auto-hide
-            if let Some(window) = app.get_webview_window("tray_menu") {
-                let w = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(focused) = event {
-                        if !focused {
-                            let _ = w.hide();
-                        }
-                    }
-                });
+                let _ = window.show();
             }
 
             let conn = db::init(app.handle())?;
             app.manage(DbState {
                 conn: std::sync::Mutex::new(conn),
             });
+
+            // --- NATIVE MENU CONSTRUCTION ---
+            use tauri::menu::{Submenu, MenuItem, PredefinedMenuItem};
+            
+            let db_state = app.state::<DbState>();
+            let profiles = {
+                let conn_guard = db_state.conn.lock().unwrap();
+                db::get_profiles(&conn_guard)?
+            };
+
+            let sys_lang = get_system_locale();
+            let is_es = sys_lang == "es";
+
+            let profiles_label = if is_es { "Perfiles" } else { "Profiles" };
+            let profiles_menu = Submenu::with_id(app.handle(), "profiles_menu", profiles_label, true)?;
+            for profile in profiles {
+                let item = MenuItem::with_id(
+                    app.handle(),
+                    format!("profile_{}", profile.id),
+                    &profile.name,
+                    true,
+                    None::<&str>
+                )?;
+                profiles_menu.append(&item)?;
+            }
+
+            let lang_label = if is_es { "Idioma" } else { "Language" };
+            let language_menu = Submenu::with_id(app.handle(), "language_menu", lang_label, true)?;
+            let lang_es = MenuItem::with_id(app.handle(), "lang_es", "Español", true, None::<&str>)?;
+            let lang_en = MenuItem::with_id(app.handle(), "lang_en", "English", true, None::<&str>)?;
+            language_menu.append(&lang_es)?;
+            language_menu.append(&lang_en)?;
+
+            let mic_label = if is_es { "Micrófono" } else { "Microphone" };
+            let mic_menu = Submenu::with_id(app.handle(), "mic_menu", mic_label, true)?;
+            let mics = audio::get_input_devices()?;
+            for mic in mics {
+                let item = MenuItem::with_id(
+                    app.handle(),
+                    format!("mic_{}", mic.name),
+                    &mic.name,
+                    true,
+                    None::<&str>
+                )?;
+                mic_menu.append(&item)?;
+            }
+
+            let icon_bytes = include_bytes!("../icons/tray-icon.png");
+            let tray_icon = tauri::image::Image::from_bytes(icon_bytes)?;
+
+            let dot_bytes = include_bytes!("../icons/green-dot.png");
+            let dot_icon = tauri::image::Image::from_bytes(dot_bytes)?;
+
+            let status_label = if is_es { "Voxa está listo" } else { "Voxa is Ready" };
+            let settings_label = if is_es { "Configuración..." } else { "Settings..." };
+            let quit_label = if is_es { "Salir de Voxa" } else { "Quit Voxa" };
+
+            let tray_menu = Menu::with_items(app.handle(), &[
+                &IconMenuItem::with_id(app.handle(), "status", status_label, true, Some(dot_icon), None::<&str>)?,
+                &PredefinedMenuItem::separator(app.handle())?,
+                &profiles_menu,
+                &mic_menu,
+                &language_menu,
+                &PredefinedMenuItem::separator(app.handle())?,
+                &MenuItem::with_id(app.handle(), "settings", settings_label, true, None::<&str>)?,
+                &PredefinedMenuItem::separator(app.handle())?,
+                &PredefinedMenuItem::quit(app.handle(), Some(quit_label))?,
+            ])?;
+
+            let tray = TrayIconBuilder::new()
+                .icon(tray_icon)
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    if id == "settings" {
+                        let _ = show_settings(app.clone(), None);
+                    } else if id.starts_with("profile_") {
+                        let profile_id = id.replace("profile_", "");
+                        let db_state = app.state::<DbState>();
+                        let _ = update_setting(app.clone(), db_state, "active_profile_id".to_string(), profile_id);
+                    } else if id.starts_with("mic_") {
+                        let mic_name = id.replace("mic_", "");
+                        let db_state = app.state::<DbState>();
+                        let _ = update_setting(app.clone(), db_state, "mic_id".to_string(), mic_name);
+                    } else if id == "lang_es" {
+                        let db_state = app.state::<DbState>();
+                        let _ = update_setting(app.clone(), db_state, "language".to_string(), "es".to_string());
+                    } else if id == "lang_en" {
+                        let db_state = app.state::<DbState>();
+                        let _ = update_setting(app.clone(), db_state, "language".to_string(), "en".to_string());
+                    }
+                })
+                .build(app)?;
+            // Store the tray icon in the app state to prevent it from being dropped
+            app.manage(tray);
+
+            println!("SETUP: Native tray menu initialized.");
+
             app.manage(AudioEngine::new());
             
             // Initialize Model Manager (handles directory creation)
@@ -387,10 +459,16 @@ pub fn run() {
                             let raw_text = {
                                 let mut whisper_lock = engine_state.whisper.lock().unwrap();
                                 if whisper_lock.is_none() {
+                                    let model_path = model_manager.get_whisper_path();
+                                    println!("PIPELINE: Loading Whisper model from {:?}", model_path);
                                     let _ = app_clone.emit("pipeline-status", "loading_whisper");
-                                    match whisper_inference::WhisperEngine::new(&model_manager.get_whisper_path()) {
-                                        Ok(e) => *whisper_lock = Some(e),
+                                    match whisper_inference::WhisperEngine::new(&model_path) {
+                                        Ok(e) => {
+                                            println!("PIPELINE: Whisper model loaded successfully.");
+                                            *whisper_lock = Some(e);
+                                        },
                                         Err(e) => {
+                                            println!("PIPELINE ERROR: Failed to load Whisper: {}", e);
                                             let _ = app_clone.emit("pipeline-error", e);
                                             continue;
                                         }
@@ -408,9 +486,14 @@ pub fn run() {
                                     };
                                     (lang, prompt)
                                 };
+                                println!("PIPELINE: Calling whisper.transcribe...");
                                 match whisper.transcribe(&samples, &language, &initial_prompt) {
-                                    Ok(t) => t,
+                                    Ok(t) => {
+                                        println!("PIPELINE: Whisper transcription complete: \"{}\"", t);
+                                        t
+                                    },
                                     Err(e) => {
+                                        println!("PIPELINE ERROR: Transcription failed: {}", e);
                                         let _ = app_clone.emit("pipeline-error", e);
                                         continue;
                                     }
@@ -421,36 +504,64 @@ pub fn run() {
                             let _ = app_clone.emit("pipeline-text-raw", &raw_text);
                             let _ = app_clone.emit("pipeline-status", "refining");
 
+                            println!("PIPELINE: Refining text with Llama...");
                             let refined_text = {
                                 let mut llama_lock = engine_state.llama.lock().unwrap();
                                 if llama_lock.is_none() {
-                                    let _ = app_clone.emit("pipeline-status", "loading_llama");
-                                    match llama_inference::LlamaEngine::new(&model_manager.get_llama_path()) {
-                                        Ok(e) => *llama_lock = Some(e),
-                                        Err(e) => {
-                                            let _ = app_clone.emit("pipeline-error", e);
-                                            continue;
+                                    let model_path = model_manager.get_llama_path();
+                                    if !model_path.exists() {
+                                        println!("PIPELINE WARNING: Llama model not found, skipping refinement.");
+                                        raw_text.clone()
+                                    } else {
+                                        let _ = app_clone.emit("pipeline-status", "loading_llama");
+                                        match llama_inference::LlamaEngine::new(&model_path) {
+                                            Ok(e) => {
+                                                *llama_lock = Some(e);
+                                                let llama = llama_lock.as_ref().unwrap();
+                                                let system_prompt = {
+                                                    let conn = db_state.conn.lock().unwrap();
+                                                    db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
+                                                };
+                                                if system_prompt.is_empty() {
+                                                    raw_text.clone()
+                                                } else {
+                                                    match llama.refine_text(&raw_text, &system_prompt) {
+                                                        Ok(t) => t,
+                                                        Err(e) => {
+                                                            let _ = app_clone.emit("pipeline-error", format!("Refinement Error: {}", e));
+                                                            raw_text.clone()
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                println!("PIPELINE ERROR: Failed to load Llama: {}. Falling back to raw text.", e);
+                                                let _ = app_clone.emit("pipeline-error", format!("Llama Loading Error: {}", e));
+                                                raw_text.clone()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let llama = llama_lock.as_ref().unwrap();
+                                    let system_prompt = {
+                                        let conn = db_state.conn.lock().unwrap();
+                                        db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
+                                    };
+                                    if system_prompt.is_empty() {
+                                        raw_text.clone()
+                                    } else {
+                                        match llama.refine_text(&raw_text, &system_prompt) {
+                                            Ok(t) => t,
+                                            Err(e) => {
+                                                let _ = app_clone.emit("pipeline-error", format!("Refinement Error: {}", e));
+                                                raw_text.clone()
+                                            }
                                         }
                                     }
                                 }
-                                let llama = llama_lock.as_ref().unwrap();
-                                let system_prompt = {
-                                    let conn = db_state.conn.lock().unwrap();
-                                    db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
-                                };
-                                
-                                if system_prompt.is_empty() {
-                                    raw_text.clone()
-                                } else {
-                                    match llama.refine_text(&raw_text, &system_prompt) {
-                                        Ok(t) => t,
-                                        Err(e) => {
-                                            let _ = app_clone.emit("pipeline-error", format!("Refinement Error: {}", e));
-                                            raw_text.clone()
-                                        },
-                                    }
-                                }
                             };
+                            
+                            println!("Refined Final Output: \"{}\"", refined_text);
 
                             {
                                 let conn = db_state.conn.lock().unwrap();
@@ -497,9 +608,13 @@ pub fn run() {
             get_custom_dictionary,
             add_to_dictionary,
             remove_from_dictionary,
+            update_profile,
+            create_profile,
+            delete_profile,
             models::check_models_status,
             models::download_models,
             show_settings,
+            get_system_locale,
             exit_app
         ])
         .plugin(tauri_plugin_clipboard_manager::init())

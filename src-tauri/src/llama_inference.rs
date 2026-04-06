@@ -14,7 +14,10 @@ impl LlamaEngine {
     pub fn new(model_path: &Path) -> Result<Self, String> {
         let backend = LlamaBackend::init().map_err(|e| e.to_string())?;
         
-        let model_params = llama_cpp_2::model::params::LlamaModelParams::default();
+        // Enable GPU offloading (Metal) with the new builder API
+        let model_params = llama_cpp_2::model::params::LlamaModelParams::default()
+            .with_n_gpu_layers(100);
+        
         let model = LlamaModel::load_from_file(&backend, model_path, &model_params)
             .map_err(|e| format!("Failed to load Llama model: {}", e))?;
             
@@ -29,7 +32,7 @@ impl LlamaEngine {
         let mut ctx = self.model.new_context(&self.backend, LlamaContextParams::default())
             .map_err(|e| format!("Failed to create Llama context: {}", e))?;
 
-        let prompt = format!("<|system|>\n{}\n<|user|>\n{}\n<|assistant|>\n", system_prompt, text);
+        let prompt = format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, text);
         let tokens_list = self.model.str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)
             .map_err(|e| format!("Tokenization failed: {}", e))?;
 

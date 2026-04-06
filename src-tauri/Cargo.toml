@@ -26,8 +26,8 @@ cpal = "0.15"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # AI Bindings
-whisper-rs = "0.13"
-llama-cpp-2 = "0.1.11"
+whisper-rs = { version = "0.13", features = ["metal"] }
+llama-cpp-2 = { version = "0.1.141", features = ["metal"] }
 
 # Utility
 reqwest = { version = "0.12", features = ["stream"] }
@@ -35,7 +35,10 @@ tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 tauri-plugin-clipboard-manager = "2"
 encoding_rs = "0.8"
+scopeguard = "1.2"
+sys-locale = "0.3.2"
 
+# Triggering rebuild for Metal features
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"
 objc = "0.2"

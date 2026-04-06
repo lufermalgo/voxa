@@ -13,6 +13,7 @@ export interface Profile {
   id: number;
   name: string;
   system_prompt: string;
+  icon?: string;
 }
 
 export function useSettings() {
@@ -44,6 +45,26 @@ export function useSettings() {
 
   useEffect(() => {
     fetchSettings();
+
+    // Listen for updates from other windows/backend
+    const unlistenSettings = invoke("get_settings").then(() => {
+      return import("@tauri-apps/api/event").then(({ listen }) => {
+        return listen("settings-updated", () => {
+          fetchSettings();
+        });
+      });
+    });
+
+    const unlistenProfiles = import("@tauri-apps/api/event").then(({ listen }) => {
+      return listen("profiles-updated", () => {
+        fetchSettings();
+      });
+    });
+
+    return () => {
+      unlistenSettings.then(u => u.then(f => f()));
+      unlistenProfiles.then(f => f());
+    };
   }, [fetchSettings]);
 
   const updateSetting = async (key: keyof AppSettings, value: string) => {
@@ -84,6 +105,34 @@ export function useSettings() {
     }
   };
 
+  const updateProfile = async (id: number, name: string, prompt: string, icon?: string) => {
+    try {
+      await invoke("update_profile", { id, name, prompt, icon });
+      setProfiles(prev => prev.map(p => p.id === id ? { ...p, name, system_prompt: prompt, icon } : p));
+    } catch (err: any) {
+      setError(err?.toString() || "Error updating profile");
+      await fetchSettings();
+    }
+  };
+
+  const createProfile = async (name: string, prompt: string, icon?: string) => {
+    try {
+      await invoke("create_profile", { name, prompt, icon });
+      await fetchSettings();
+    } catch (err: any) {
+      setError(err?.toString() || "Error creating profile");
+    }
+  };
+
+  const deleteProfile = async (id: number) => {
+    try {
+      await invoke("delete_profile", { id });
+      setProfiles(prev => prev.filter(p => p.id !== id));
+    } catch (err: any) {
+      setError(err?.toString() || "Error deleting profile");
+    }
+  };
+
   return { 
     settings, 
     profiles, 
@@ -93,6 +142,9 @@ export function useSettings() {
     updateSetting, 
     addWord, 
     removeWord, 
+    updateProfile,
+    createProfile,
+    deleteProfile,
     refresh: fetchSettings 
   };
 }

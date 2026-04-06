@@ -1,55 +1,124 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #131314;
-  --color-on-surface: #e5e2e3;
-  --color-on-surface-variant: #cac4d5;
-  --color-primary: #cbbeff;
-  --color-primary-container: #9d85ff;
-  --color-surface-container-low: #1c1b1c;
-  --color-surface-container-high: #2a2a2b;
-  --color-surface-container-highest: #353436;
-  --color-error: #ffb4ab;
-  --color-on-primary: #330b91;
-  --color-primary-fixed: #e7deff;
-  --color-primary-fixed-dim: #cbbeff;
-  --color-tertiary-fixed-dim: #c6c6c6;
-  --color-on-primary-fixed: #1e0061;
+  --color-background: #fbfbff;
+  --color-on-surface: #121417;
+  --color-on-surface-variant: #454749;
+  --color-primary: #9D85FF;
+  --color-primary-container: #8266ff;
+  --color-primary-hover: #7b61f2;
+  --color-accent: #9D85FF;
+  --color-secondary: #5078e8;
+  --color-tertiary: #C0C0C0;
+  
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f7f7f9;
+  --color-surface-container: #f2f2f4;
+  --color-surface-container-high: #ededef;
+  --color-surface-container-highest: #e8e8ea;
+  
+  --color-error: #ba1a1a;
+  --color-error-rgb: 186, 26, 26;
+  --color-on-primary: #ffffff;
+  --color-on-error: #ffffff;
+  
+  --color-primary-rgb: 157, 133, 255;
   
   --font-headline: 'Manrope', sans-serif;
   --font-body: 'Inter', sans-serif;
+
+  /* Global Radii */
+  --radius-voxa: 2.5rem;
+  --radius-system: 12px;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 :root {
   background-color: transparent;
-  color: var(--on-surface);
+  color: var(--color-on-surface);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background-color: transparent !important;
+/* Obsidian Glass Typography */
+h1, h2, h3, h4, .font-headline {
+  font-family: var(--font-headline);
+  letter-spacing: 0.1rem; /* Editorial Precision */
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
-#root {
-  width: 100%;
-  height: 100%;
-  background: transparent !important;
+.font-label {
+  font-family: var(--font-headline);
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
 }
 
-.mac-blur {
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-}
-
-.obsidian-glass {
-  background: rgba(19, 19, 20, 0.7);
+/* Glass & Gradient Mastery */
+.glass-panel {
+  background: rgba(251, 251, 255, 0.6); /* Refined airy glass */
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(157, 133, 255, 0.15); /* Slightly more defined border */
+  box-shadow: 0 8px 32px rgba(157, 133, 255, 0.05); /* Subtle brand shadow */
+}
+
+/* Native Vibrancy Helper */
+.native-vibrancy {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* System-Integrated Menu Item */
+.menu-item-hover {
+  @apply hover:bg-black/5 dark:hover:bg-white/10;
+  transition: background-color 0.1s ease-out;
+}
+
+.tray-menu-container {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: subpixel-antialiased;
+  color: white !important;
+}
+
+.tray-divider {
+  @apply h-[0.5px] w-full bg-black/5 dark:bg-white/5 my-0.5;
+}
+
+.glass-panel-light {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(193, 198, 215, 0.1);
+}
+
+.cta-gradient {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%);
+  border: none !important;
+}
+
+/* Surface Depth without borders */
+.surface-card {
+  background-color: var(--color-surface-container-low);
+  border-radius: var(--radius-voxa);
+}
+
+.surface-card-nested {
+  background-color: var(--color-surface-container-lowest);
+  border-radius: var(--radius-voxa);
 }
 
 .material-symbols-outlined {
@@ -57,12 +126,17 @@ body {
   font-size: 18px;
 }
 
+.tray-icon {
+  font-size: 14px !important;
+  opacity: 0.8;
+}
+
 .material-symbols-fill {
   font-variation-settings: 'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20;
 }
 
 .waveform-aura {
-  filter: drop-shadow(0 0 4px rgba(203, 190, 255, 0.3));
+  filter: drop-shadow(0 0 6px rgba(0, 88, 188, 0.2));
 }
 
 /* Custom Scrollbar for Obsidian Menu */

@@ -16,7 +16,7 @@
         "label": "main",
         "title": "Voxa",
         "width": 300,
-        "height": 160,
+        "height": 100,
         "decorations": false,
         "transparent": true,
         "shadow": false,
@@ -34,19 +34,6 @@
         "transparent": false,
         "visible": false,
         "center": true
-      },
-      {
-        "label": "tray_menu",
-        "title": "Voxa Menu",
-        "width": 360,
-        "height": 500,
-        "decorations": false,
-        "transparent": true,
-        "visible": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "resizable": false,
-        "shadow": true
       }
     ],
     "security": {
@@ -57,11 +44,8 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/tray-icon.png"
     ],
     "macOS": {
       "frameworks": [],

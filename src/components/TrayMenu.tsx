@@ -1,12 +1,80 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
 export const TrayMenu = () => {
-  const [selectedProfile, setSelectedProfile] = useState("Technical Transcription");
-  const [language, setLanguage] = useState("EN");
+  const [language, setLanguage] = useState("es");
+  const [devices, setDevices] = useState<any[]>([]);
+  const [micId, setMicId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // UI State for toggling sections
+  const [expandedSection, setExpandedSection] = useState<"mic" | "lang" | null>(null);
+
+  // Auto-resize window to fit content
+  useLayoutEffect(() => {
+    const resizeWindow = async () => {
+      if (containerRef.current) {
+        // Measure the actual height of the content
+        const height = containerRef.current.scrollHeight;
+        const width = 240; // Fixed width for consistency
+        const appWindow = getCurrentWindow();
+        await appWindow.setSize(new LogicalSize(width, height));
+      }
+    };
+
+    // Resize on mount and potential content changes
+    resizeWindow();
+    
+    // Also resize when language or mic changes (since toggle states might shift layout)
+    const timer = setTimeout(resizeWindow, 50); 
+    return () => clearTimeout(timer);
+  }, [language, micId, expandedSection]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const [allSettings, allDevices] = await Promise.all([
+          invoke<Record<string, string>>("get_settings"),
+          invoke<any[]>("get_audio_devices")
+        ]);
+        
+        setLanguage(allSettings.language || "es");
+        setDevices(allDevices);
+        setMicId(allSettings.mic_id || null);
+      } catch (err) {
+        console.error("TrayMenu init error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+
+    const unlistenSettings = getCurrentWindow().listen("settings-updated", () => {
+      init();
+    });
+
+    return () => {
+      unlistenSettings.then(f => f());
+    };
+  }, []);
 
   const closeMenu = () => getCurrentWindow().hide();
+  
+  const handleUpdateSetting = async (key: string, value: string) => {
+    try {
+      await invoke("update_setting", { key, value });
+      if (key === "language") setLanguage(value);
+      if (key === "mic_id") setMicId(value);
+      // Close expansion after selection to keep it compact
+      setExpandedSection(null);
+    } catch (err) {
+      console.error(`Error updating setting ${key}:`, err);
+    }
+  };
+
   const openSettings = (tab?: string) => {
     invoke("show_settings", { tab });
     closeMenu();
@@ -14,117 +82,115 @@ export const TrayMenu = () => {
 
   const handleQuit = () => invoke("exit_app");
 
+  if (loading) return null;
+
   return (
-    <div className="w-full h-full bg-[#131314]/80 mac-blur rounded-[24px] shadow-2xl border border-white/10 flex flex-col overflow-hidden ring-1 ring-black/50 text-on-surface select-none font-body">
-      {/* Header Section */}
-      <div className="px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="relative flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary material-symbols-fill">graphic_eq</span>
-            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)] border border-[#131314]" />
-          </div>
-          <span className="font-headline font-bold text-[15px] tracking-tight text-white">Voxa is Ready</span>
-        </div>
-      </div>
-
-      <div className="h-[1px] bg-white/5 mx-3" />
-
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {/* Section 1: Profiles */}
-        <div className="px-3 py-3">
-          <div className="px-3 py-1.5 mb-1">
-            <span className="font-label text-[11px] uppercase tracking-[0.15rem] text-on-surface-variant font-bold">Profiles</span>
-          </div>
-          <div className="space-y-1">
-            <ProfileItem 
-              label="Technical Transcription" 
-              icon="person" 
-              active={selectedProfile === "Technical Transcription"} 
-              onClick={() => setSelectedProfile("Technical Transcription")} 
-            />
-            <ProfileItem 
-              label="Creative Writing" 
-              icon="edit_note" 
-              active={selectedProfile === "Creative Writing"} 
-              onClick={() => setSelectedProfile("Creative Writing")} 
-            />
-            <ProfileItem 
-              label="Board Meeting" 
-              icon="meeting_room" 
-              active={selectedProfile === "Board Meeting"} 
-              onClick={() => setSelectedProfile("Board Meeting")} 
-            />
-          </div>
+    <div 
+      ref={containerRef}
+      className="w-[240px] h-fit tray-menu-container native-vibrancy flex flex-col overflow-hidden text-white select-none animate-in fade-in zoom-in-95 duration-200 border-[0.5px] border-white/20 rounded-[12px]"
+    >
+      <div className="p-1 flex flex-col">
+        {/* Microfono Section */}
+        <div className="rounded-[6px] overflow-hidden transition-all duration-300">
+          <ActionItem 
+            icon="settings_voice" 
+            label="Micrófono" 
+            value={micId === "auto" || !micId ? "Auto" : (devices.find(d => d.name === micId)?.name || micId).slice(0, 11)}
+            onClick={() => setExpandedSection(expandedSection === "mic" ? null : "mic")}
+            isActive={expandedSection === "mic"}
+          />
+          {expandedSection === "mic" && (
+            <div className="mx-1 mb-1 p-0.5 bg-black/5 dark:bg-white/5 rounded-[4px] animate-in slide-in-from-top-1 duration-200 max-h-[140px] overflow-y-auto custom-scrollbar">
+              <SubItem 
+                label="Auto-detectar Sistema" 
+                isActive={!micId || micId === 'auto'} 
+                onClick={() => handleUpdateSetting("mic_id", "auto")} 
+              />
+              {devices.map((d) => (
+                <SubItem 
+                  key={d.name}
+                  label={d.name}
+                  isActive={micId === d.name}
+                  onClick={() => handleUpdateSetting("mic_id", d.name)}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="h-[1px] bg-white/5 mx-3 my-1" />
-
-        {/* Section 2: Language */}
-        <div className="px-3 py-3">
-          <div className="px-3 py-1.5 mb-1">
-            <span className="font-label text-[11px] uppercase tracking-[0.15rem] text-on-surface-variant font-bold">Language</span>
-          </div>
-          <div className="px-3 flex items-center">
-            <div className="flex w-full bg-[#1c1b1c] rounded-full p-1 border border-white/5">
+        {/* Lenguaje Section */}
+        <div className="rounded-[6px] overflow-hidden transition-all duration-300">
+          <ActionItem 
+            icon="language" 
+            label="Lenguaje" 
+            value={language.toUpperCase() === "ES" ? "ES" : "EN"}
+            onClick={() => setExpandedSection(expandedSection === "lang" ? null : "lang")}
+            isActive={expandedSection === "lang"}
+          />
+          {expandedSection === "lang" && (
+            <div className="mx-1 mb-1 p-1 bg-black/5 dark:bg-white/5 rounded-[4px] animate-in slide-in-from-top-1 duration-200 flex gap-1">
               <button 
-                onClick={() => setLanguage("EN")}
-                className={`flex-1 py-1.5 rounded-full text-[12px] transition-all ${language === 'EN' ? 'bg-white/10 shadow-sm text-white font-bold tracking-wider' : 'text-on-surface-variant hover:text-on-surface font-medium'}`}
+                onClick={() => handleUpdateSetting("language", "es")}
+                className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all px-2 ${language.toLowerCase() === 'es' ? 'bg-[#007AFF] text-white shadow-sm' : 'text-white/40 hover:text-white/90 hover:bg-white/5'}`}
               >
-                EN
+                ESPAÑOL
               </button>
               <button 
-                onClick={() => setLanguage("ES")}
-                className={`flex-1 py-1.5 rounded-full text-[12px] transition-all ${language === 'ES' ? 'bg-white/10 shadow-sm text-white font-bold tracking-wider' : 'text-on-surface-variant hover:text-on-surface font-medium'}`}
+                onClick={() => handleUpdateSetting("language", "en")}
+                className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all px-2 ${language.toLowerCase() === 'en' ? 'bg-[#007AFF] text-white shadow-sm' : 'text-white/40 hover:text-white/90 hover:bg-white/5'}`}
               >
-                ES
+                ENGLISH
               </button>
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="h-[1px] bg-white/5 mx-3 my-1" />
+        <div className="tray-divider" />
 
-        {/* Footer Actions */}
-        <div className="px-3 pb-3 pt-1">
-          <div className="space-y-1">
-            <ActionItem icon="settings" label="Settings..." shortcut="⌘," onClick={() => openSettings('general')} />
-            <ActionItem icon="menu_book" label="Dictionary..." shortcut="⌘D" onClick={() => openSettings('dictionary')} />
-            <div className="h-[1px] bg-white/5 mx-2 my-2" />
-            <ActionItem icon="power_settings_new" label="Quit" shortcut="⌘Q" onClick={handleQuit} isDestructive />
-          </div>
+        {/* Action Items */}
+        <div className="space-y-0.5">
+          <ActionItem icon="history" label="Transcription History" onClick={() => openSettings('history')} />
+          <ActionItem icon="tune" label="AI Profiles" onClick={() => openSettings('profiles')} />
+          <ActionItem icon="spellcheck" label="Custom Dictionary" onClick={() => openSettings('dictionary')} />
+          
+          <div className="tray-divider" />
+          
+          <ActionItem icon="settings" label="Settings..." onClick={() => openSettings()} />
+          <ActionItem icon="help" label="Help Center" onClick={() => {}} />
+          
+          <div className="tray-divider" />
+          
+          <ActionItem icon="power_settings_new" label="Quit Voxa" onClick={handleQuit} isDestructive />
         </div>
-      </div>
-
-      {/* Bottom Texture Tip */}
-      <div className="bg-[#cbbeff]/5 px-4 py-3 flex items-center justify-center border-t border-white/[0.02]">
-        <span className="text-[10px] text-[#cbbeff]/60 font-bold tracking-[0.2em] uppercase">Voxa Version 2.4.0</span>
       </div>
     </div>
   );
 };
 
-const ProfileItem = ({ label, icon, active, onClick }: { label: string, icon: string, active: boolean, onClick: () => void }) => (
-  <div 
-    onClick={onClick}
-    className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group ${active ? 'bg-[#cbbeff]/10' : 'hover:bg-white/5'}`}
-  >
-    <div className="flex items-center space-x-4">
-      <span className={`material-symbols-outlined ${active ? 'text-primary material-symbols-fill' : 'text-on-surface-variant group-hover:text-on-surface'}`}>{icon}</span>
-      <span className={`text-[13px] font-semibold ${active ? 'text-primary' : 'text-on-surface-variant group-hover:text-on-surface'}`}>{label}</span>
-    </div>
-    {active && <span className="material-symbols-outlined text-primary text-[18px] material-symbols-fill">check_circle</span>}
-  </div>
-);
-
-const ActionItem = ({ icon, label, shortcut, onClick, isDestructive }: { icon: string, label: string, shortcut: string, onClick: () => void, isDestructive?: boolean }) => (
+const ActionItem = ({ icon, label, value, onClick, isDestructive, isActive }: any) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group ${isDestructive ? 'hover:bg-red-400/10' : 'hover:bg-white/5'}`}
+    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-[5px] transition-all group shrink-0 menu-item-hover
+      ${isActive ? 'bg-[#007AFF] text-white' : 'text-white/90 hover:text-white dark:text-white/90'}`}
   >
-    <div className="flex items-center space-x-4">
-      <span className={`material-symbols-outlined text-on-surface-variant transition-colors ${isDestructive ? 'group-hover:text-red-400' : 'group-hover:text-on-surface'}`}>{icon}</span>
-      <span className={`text-[13px] font-semibold transition-colors ${isDestructive ? 'text-red-400 group-hover:text-red-400' : 'text-on-surface group-hover:text-on-surface'}`}>{label}</span>
+    <div className="flex items-center space-x-2.5">
+      <span className={`material-symbols-outlined tray-icon ${isActive ? 'text-white' : 'opacity-70 group-hover:opacity-100 transition-all'}`}>{icon}</span>
+      <span className="text-[13px] font-normal leading-none tracking-tight">{label}</span>
     </div>
-    <span className={`text-[11px] font-mono transition-colors text-white/20 ${isDestructive ? 'text-red-400 group-hover:text-red-400' : 'group-hover:text-on-surface'}`}>{shortcut}</span>
+    {value && !isDestructive && !isActive && (
+      <span className="text-[10px] font-medium opacity-40 group-hover:opacity-100 px-1.5 py-0.5 rounded-sm transition-all uppercase tracking-tight">{value}</span>
+    )}
   </button>
 );
+
+const SubItem = ({ label, isActive, onClick }: any) => (
+  <button 
+    onClick={onClick}
+    className={`w-full flex items-center justify-between px-2 py-1 rounded-[3px] transition-all text-left group
+      ${isActive ? 'bg-[#007AFF] text-white' : 'hover:bg-white/10 text-white/50 hover:text-white/90'}`}
+  >
+    <span className="text-[12px] font-normal truncate pr-2">{label}</span>
+    {isActive && <span className="material-symbols-outlined text-[13px] text-white">check</span>}
+  </button>
+);
+

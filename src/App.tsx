@@ -5,15 +5,29 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { TrayMenu } from "./components/TrayMenu";
+import { Locale, translations } from "./i18n";
+
 import "./App.css";
 
 function App() {
   const { status, rawText, refinedText, error, downloadModels } = useTranscription();
-  const [modelsMissing, setModelsMissing] = useState(false);
+  const [hasModels, setHasModels] = useState(true);
   const [windowLabel, setWindowLabel] = useState<string>(() => getCurrentWindow().label);
   const [activeTab, setActiveTab] = useState<string>("general");
-  const [isOnboarded, setIsOnboarded] = useState<boolean>(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const [uiLocale, setUiLocale] = useState<Locale>("en");
+
+  const fetchSettings = async () => {
+    try {
+      await invoke("get_settings");
+      
+      const systemLocale = await invoke<string>("get_system_locale");
+      setUiLocale(systemLocale.startsWith("es") ? "es" : "en");
+    } catch (err) {
+      console.error("Error fetching settings:", err);
+    }
+  };
 
   useEffect(() => {
     const label = getCurrentWindow().label;
@@ -21,11 +35,32 @@ function App() {
 
     const init = async () => {
       try {
-        const missing = await invoke<boolean>("check_models_status");
-        setModelsMissing(missing);
+        const exists = await invoke<boolean>("check_models_status");
+        setHasModels(exists);
         
-        const settings = await invoke<Record<string, string>>("get_settings");
-        setIsOnboarded(settings.is_onboarded === "true");
+        await fetchSettings();
+
+        if (!exists) {
+          const label = getCurrentWindow().label;
+          const isEs = (await invoke<string>("get_system_locale")).startsWith("es");
+
+          if (label === "main") {
+            setIsDownloading(true);
+            setDownloadStatus(isEs ? "Proveyendo IA (Metal)..." : "Provisioning AI (Metal)...");
+            try {
+              await invoke("download_models");
+              setDownloadStatus(isEs ? "Listo" : "Ready");
+              setIsDownloading(false);
+              setHasModels(true);
+            } catch (error) {
+              console.error("Error downloading models:", error);
+              setDownloadStatus(isEs ? "Error. Revisar logs." : "Error. Check logs.");
+            }
+          } else {
+            setIsDownloading(true);
+            setDownloadStatus(isEs ? "Descargando IA..." : "Downloading AI...");
+          }
+        }
       } catch (err) {
         console.error("Initialization error:", err);
       }
@@ -33,32 +68,35 @@ function App() {
 
     init();
 
-    const unlisten = listen<string>("show-tab", (event) => {
+    const unlistenStatus = listen<string>("show-tab", (event) => {
       setActiveTab(event.payload);
     });
 
+    const unlistenSettings = listen("settings-updated", () => {
+      fetchSettings();
+    });
+
+    const unlistenProgress = listen<{model: string, progress: number}>("download-progress", (event) => {
+       const t = translations[uiLocale];
+       setDownloadStatus(t.downloading_model.replace("{model}", event.payload.model).replace("{progress}", Math.round(event.payload.progress).toString()));
+    });
+
     return () => {
-      unlisten.then(f => f());
+      unlistenStatus.then(f => f());
+      unlistenSettings.then(f => f());
+      unlistenProgress.then(f => f());
     };
   }, []);
 
   // Settings Window
   if (windowLabel === "settings") {
     return (
-      <div className="h-screen w-screen bg-[#131314] text-white overflow-hidden">
+      <div className="h-screen w-screen bg-background text-on-surface overflow-hidden">
         <SettingsPanel 
           onClose={() => getCurrentWindow().hide()} 
           initialTab={activeTab}
+          uiLocale={uiLocale}
         />
-      </div>
-    );
-  }
-
-  // Tray Menu Window (Hidden by default, shown on tray click)
-  if (windowLabel === "tray_menu") {
-    return (
-      <div className="h-screen w-screen bg-transparent overflow-hidden">
-        <TrayMenu />
       </div>
     );
   }
@@ -66,8 +104,12 @@ function App() {
   // Floating Pill Window (Main)
   if (windowLabel === "main") {
     return (
-      <div className="w-full h-full flex items-end justify-center pb-[10px] bg-transparent overflow-hidden">
-        <RecorderPill status={modelsMissing ? "loading" : status} />
+      <div className="w-full h-full flex items-end justify-center pb-5 bg-transparent overflow-hidden">
+        <RecorderPill 
+          status={isDownloading ? "loading" : status} 
+          label={isDownloading ? downloadStatus : undefined} 
+          uiLocale={uiLocale}
+        />
       </div>
     );
   }
