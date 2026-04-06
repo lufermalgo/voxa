@@ -26,7 +26,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
-  const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'clear' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'clear' } | { type: 'redownload' } | null>(null);
   
   // State for models
   const [modelsInfo, setModelsInfo] = useState<any>(null);
@@ -129,6 +129,21 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
 
   const clearHistory = () => {
     setConfirmModal({ type: 'clear' });
+  };
+
+  const executeRedownload = async () => {
+    setConfirmModal(null);
+    setIsDownloadingModels(true);
+    setDownloadProgress(null);
+    try {
+      await invoke("download_models");
+      const info = await invoke("get_models_info");
+      setModelsInfo(info);
+    } catch (e) {
+      console.error(e);
+    }
+    setIsDownloadingModels(false);
+    setDownloadProgress(null);
   };
 
   const executeClearHistory = async () => {
@@ -650,22 +665,8 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     </div>
 
                     <div className="flex justify-end pt-2">
-                      <button 
-                        onClick={async () => {
-                          if (confirm(t.redownload + "?")) {
-                            setIsDownloadingModels(true);
-                            setDownloadProgress(null);
-                            try {
-                                await invoke("download_models");
-                                const info = await invoke("get_models_info");
-                                setModelsInfo(info);
-                            } catch (e) {
-                                console.error(e);
-                            }
-                            setIsDownloadingModels(false);
-                            setDownloadProgress(null);
-                          }
-                        }}
+                      <button
+                        onClick={() => setConfirmModal({ type: 'redownload' })}
                         disabled={isDownloadingModels}
                         className={`px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${isDownloadingModels ? 'bg-surface-container-highest text-on-surface-variant/40 cursor-not-allowed' : 'bg-on-surface text-background hover:bg-on-surface/90 shadow-xl shadow-on-surface/5'}`}
                       >
@@ -831,10 +832,12 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
           <div className="bg-surface rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-6 space-y-6">
             <div className="space-y-2">
               <h3 className="text-base font-black text-on-surface font-headline uppercase tracking-widest">
-                {t.delete}
+                {confirmModal.type === 'redownload' ? t.redownload : t.delete}
               </h3>
               <p className="text-sm text-on-surface-variant">
-                {confirmModal.type === 'clear' ? t.confirm_clear : t.confirm_delete_transcript}
+                {confirmModal.type === 'clear' ? t.confirm_clear
+                  : confirmModal.type === 'redownload' ? t.redownload + "?"
+                  : t.confirm_delete_transcript}
               </p>
             </div>
             <div className="flex gap-3 justify-end">
@@ -845,10 +848,14 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                 {t.cancel}
               </button>
               <button
-                onClick={() => confirmModal.type === 'clear' ? executeClearHistory() : executeDelete(confirmModal.id)}
+                onClick={() => {
+                  if (confirmModal.type === 'redownload') executeRedownload();
+                  else if (confirmModal.type === 'clear') executeClearHistory();
+                  else executeDelete(confirmModal.id);
+                }}
                 className="px-5 py-2 rounded-xl bg-error text-white text-[11px] font-black uppercase tracking-widest hover:bg-error/90 transition-all"
               >
-                {t.delete}
+                {confirmModal.type === 'redownload' ? t.redownload : t.delete}
               </button>
             </div>
           </div>
