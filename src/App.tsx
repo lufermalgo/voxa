@@ -78,13 +78,21 @@ function App() {
 
     const unlistenProgress = listen<{model: string, progress: number}>("download-progress", (event) => {
        const t = translations[uiLocale];
+       setIsDownloading(true);
        setDownloadStatus(t.downloading_model.replace("{model}", event.payload.model).replace("{progress}", Math.round(event.payload.progress).toString()));
+    });
+
+    const unlistenComplete = listen("download-complete", () => {
+      setIsDownloading(false);
+      setDownloadStatus("");
+      setHasModels(true);
     });
 
     return () => {
       unlistenStatus.then(f => f());
       unlistenSettings.then(f => f());
       unlistenProgress.then(f => f());
+      unlistenComplete.then(f => f());
     };
   }, []);
 

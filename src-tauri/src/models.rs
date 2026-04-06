@@ -198,6 +198,7 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
     }
 
     println!("All models provisioned successfully.");
+    app_handle.emit("download-complete", ()).unwrap_or_default();
 
     Ok(())
 }
