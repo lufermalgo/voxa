@@ -14,6 +14,21 @@ pub struct DownloadProgress {
     pub current: u64,
 }
 
+#[derive(serde::Serialize, Clone)]
+pub struct ModelDetail {
+    pub display_name: String,
+    pub filename: String,
+    pub path: String,
+    pub size_mb: f64,
+    pub downloaded: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct ModelsStateInfo {
+    pub base_path: String,
+    pub models: Vec<ModelDetail>,
+}
+
 pub struct ModelManager {
     pub base_path: PathBuf,
     pub is_downloading: std::sync::atomic::AtomicBool,
@@ -43,6 +58,53 @@ impl ModelManager {
     pub fn models_exist(&self) -> bool {
         self.get_whisper_path().exists() && self.get_llama_path().exists()
     }
+}
+
+#[tauri::command]
+pub async fn get_models_info(app_handle: AppHandle) -> Result<ModelsStateInfo, String> {
+    let manager = ModelManager::new(&app_handle)?;
+    let models_meta = vec![
+        ("Whisper Small (General)", "ggml-small.bin"),
+        ("SmolLM2-360M (Refinement)", "smollm2-360m-instruct-q4_k_m.gguf"),
+    ];
+
+    let mut models = Vec::new();
+
+    for (display_name, filename) in models_meta {
+        let path = manager.base_path.join(filename);
+        let exists = path.exists();
+        let size_mb = if exists {
+            fs::metadata(&path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+
+        models.push(ModelDetail {
+            display_name: display_name.to_string(),
+            filename: filename.to_string(),
+            path: path.to_string_lossy().to_string(),
+            size_mb: (size_mb * 100.0).round() / 100.0,
+            downloaded: exists && size_mb > 1.0,
+        });
+    }
+
+    Ok(ModelsStateInfo {
+        base_path: manager.base_path.to_string_lossy().to_string(),
+        models,
+    })
+}
+
+#[tauri::command]
+pub async fn open_models_folder(app_handle: AppHandle) -> Result<(), String> {
+    let manager = ModelManager::new(&app_handle)?;
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&manager.base_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

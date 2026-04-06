@@ -674,6 +674,8 @@ pub fn run() {
             delete_profile,
             models::check_models_status,
             models::download_models,
+            models::get_models_info,
+            models::open_models_folder,
             show_settings,
             get_system_locale,
             exit_app

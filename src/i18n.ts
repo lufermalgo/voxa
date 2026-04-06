@@ -72,6 +72,17 @@ export const translations = {
     english: "ENGLISH",
     tip_text: "Tip: Use Cmd+L to start a new instant transcription.",
     
+    // Models Section
+    models: "Models",
+    ai_models: "AI Models",
+    models_subtitle: "Local intelligence engines powering Voxa.",
+    downloaded: "Downloaded & Ready",
+    missing: "Missing - Tap to Download",
+    open_folder: "Open Models Folder",
+    redownload: "Force Re-download",
+    size_mb: "MB",
+    path: "Path",
+    
     // Footer
     footer_engine: "Voxa v{version}"
   },
@@ -147,6 +158,17 @@ export const translations = {
     spanish: "ESPAÑOL",
     english: "INGLÉS",
     tip_text: "Tip: Usá Cmd+L para iniciar una nueva transcripción instantánea.",
+    
+    // Models Section
+    models: "Modelos",
+    ai_models: "Modelos de IA",
+    models_subtitle: "Motores de inteligencia local que le dan vida a Voxa.",
+    downloaded: "Descargado y Listo",
+    missing: "Faltante - Click para Bajar",
+    open_folder: "Abrir Carpeta de Modelos",
+    redownload: "Forzar Re-descarga",
+    size_mb: "MB",
+    path: "Ruta",
     
     // Footer
     footer_engine: "Voxa v{version}"

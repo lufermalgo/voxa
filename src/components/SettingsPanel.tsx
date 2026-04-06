@@ -25,6 +25,11 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
   
+  // State for models
+  const [modelsInfo, setModelsInfo] = useState<any>(null);
+  const [isDownloadingModels, setIsDownloadingModels] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<any>(null);
+
   // State for editing profiles
   const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -81,12 +86,27 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
       .then(setMicDevices)
       .catch(console.error);
 
+    const loadModelsInfo = async () => {
+      try {
+        const info = await invoke("get_models_info");
+        setModelsInfo(info);
+      } catch (err) {
+        console.error("Failed to load models info:", err);
+      }
+    };
+    loadModelsInfo();
+
+    const unlistenProgress = getCurrentWindow().listen("download-progress", (event) => {
+      setDownloadProgress(event.payload);
+    });
+
     const unlisten = getCurrentWindow().listen("pipeline-results", () => {
       loadHistory();
     });
 
     return () => {
       unlisten.then(f => f());
+      unlistenProgress.then(f => f());
     };
   }, []);
 
@@ -142,6 +162,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
     { id: "history", label: t.history, icon: "schedule" },
     { id: "profiles", label: t.profiles, icon: "psychology" },
     { id: "dictionary", label: t.dictionary, icon: "book" },
+    { id: "models", label: t.models, icon: "memory" },
     { id: "general", label: t.general, icon: "settings" },
   ];
 
@@ -525,6 +546,93 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     </button>
                   </div>
                 </div>
+              </section>
+            )}
+
+            {/* SECTION: MODELS */}
+            {activeTab === "models" && (
+              <section className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-black text-on-surface font-headline">{t.models}</h3>
+                    <p className="text-sm text-on-surface-variant">{t.models_subtitle}</p>
+                  </div>
+                  <button 
+                    onClick={() => invoke("open_models_folder")}
+                    className="px-6 py-3 rounded-xl bg-primary/5 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                    {t.open_folder}
+                  </button>
+                </div>
+
+                {modelsInfo && (
+                  <div className="space-y-6">
+                    <div className="p-8 rounded-[2rem] bg-surface-container-low shadow-lg space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">{t.path}</label>
+                        <div className="text-[11px] text-on-surface-variant/80 font-mono break-all bg-background border border-surface-container-high p-4 rounded-xl">
+                          {modelsInfo.base_path}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 pt-6 border-t border-on-surface/5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">{t.ai_models}</label>
+                        <div className="grid gap-4">
+                          {modelsInfo.models.map((model: any) => (
+                            <div key={model.filename} className="flex justify-between items-center p-6 rounded-2xl bg-background border border-surface-container-high transition-all">
+                              <div>
+                                <h4 className="text-sm font-black text-on-surface uppercase tracking-widest">{model.display_name}</h4>
+                                <div className="text-[10px] text-on-surface-variant/60 font-mono mt-1 opacity-60">{model.filename}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[11px] font-black text-on-surface uppercase tracking-widest">{model.size_mb} {t.size_mb}</div>
+                                <div className={`text-[9px] font-black uppercase tracking-[0.2em] mt-1.5 px-2 py-1 inline-block rounded-md ${model.downloaded ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'}`}>
+                                  {model.downloaded ? t.downloaded : t.missing}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        onClick={async () => {
+                          if (confirm(t.redownload + "?")) {
+                            setIsDownloadingModels(true);
+                            setDownloadProgress(null);
+                            try {
+                                await invoke("download_models");
+                                const info = await invoke("get_models_info");
+                                setModelsInfo(info);
+                            } catch (e) {
+                                console.error(e);
+                            }
+                            setIsDownloadingModels(false);
+                            setDownloadProgress(null);
+                          }
+                        }}
+                        disabled={isDownloadingModels}
+                        className={`px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${isDownloadingModels ? 'bg-surface-container-highest text-on-surface-variant/40 cursor-not-allowed' : 'bg-on-surface text-background hover:bg-on-surface/90 shadow-xl shadow-on-surface/5'}`}
+                      >
+                        {isDownloadingModels ? t.loading : t.redownload}
+                      </button>
+                    </div>
+                    {isDownloadingModels && downloadProgress && (
+                      <div className="p-8 rounded-[2rem] bg-surface-container-low border border-surface-container-high space-y-4 animate-in slide-in-from-bottom-4 duration-500 shadow-xl">
+                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-primary">
+                            <span>{downloadProgress.model}</span>
+                            <span>{downloadProgress.progress.toFixed(1)}%</span>
+                         </div>
+                         <div className="w-full h-2 bg-on-surface/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary transition-all duration-300 shadow-[0_0_10px_rgba(var(--color-primary-rgb),0.5)]" style={{ width: `${downloadProgress.progress}%` }} />
+                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 
