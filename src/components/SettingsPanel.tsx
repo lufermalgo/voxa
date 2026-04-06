@@ -212,16 +212,16 @@ export function SettingsPanel({ onClose, initialTab = "general", uiLocale }: Set
                 </div>
 
                 <div className="grid gap-6">
-                  {transcripts.map((t) => (
-                    <div key={t.id} className="group relative p-8 rounded-voxa bg-surface-container-low hover:bg-surface-container-high transition-all duration-500 shadow-lg">
+                  {transcripts.map((transcript) => (
+                    <div key={transcript.id} className="group relative p-8 rounded-voxa bg-surface-container-low hover:bg-surface-container-high transition-all duration-500 shadow-lg">
                       <div className="flex justify-between items-start gap-4 mb-4">
                         <span className="text-[10px] font-mono text-on-surface-variant uppercase tracking-widest">
-                          {new Date(t.timestamp).toLocaleDateString()} • {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(transcript.timestamp).toLocaleDateString()} • {new Date(transcript.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <CopyButton text={t.content} />
+                          <CopyButton text={transcript.content} copyLabel={t.copy_text} />
                           <button 
-                            onClick={() => deleteTranscript(t.id)}
+                            onClick={() => deleteTranscript(transcript.id)}
                             className="p-2 rounded-lg bg-error/10 text-error/40 hover:text-error hover:bg-error/20 transition-all"
                             title={t.delete}
                           >
@@ -230,7 +230,7 @@ export function SettingsPanel({ onClose, initialTab = "general", uiLocale }: Set
                         </div>
                       </div>
                       <p className="text-sm text-on-surface leading-loose font-medium pr-12">
-                        {t.content}
+                        {transcript.content}
                       </p>
                     </div>
                   ))}
@@ -603,7 +603,7 @@ export function SettingsPanel({ onClose, initialTab = "general", uiLocale }: Set
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, copyLabel }: { text: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -616,7 +616,7 @@ function CopyButton({ text }: { text: string }) {
     <button 
       onClick={handleCopy}
       className={`p-2 rounded-lg transition-all ${copied ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface/40 hover:text-on-surface hover:bg-on-surface/10'}`}
-      title={t.copy_text}
+      title={copyLabel}
     >
       <span className="material-symbols-outlined text-[18px]">
         {copied ? 'done' : 'content_copy'}
