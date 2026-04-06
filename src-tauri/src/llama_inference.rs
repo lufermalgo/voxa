@@ -3,6 +3,7 @@ use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::token::data_array::LlamaTokenDataArray;
+use std::num::NonZeroU32;
 use std::path::Path;
 
 pub struct LlamaEngine {
@@ -29,7 +30,9 @@ impl LlamaEngine {
             return Ok(text.to_string());
         }
 
-        let mut ctx = self.model.new_context(&self.backend, LlamaContextParams::default())
+        let ctx_params = LlamaContextParams::default()
+            .with_n_ctx(NonZeroU32::new(2048));
+        let mut ctx = self.model.new_context(&self.backend, ctx_params)
             .map_err(|e| format!("Failed to create Llama context: {}", e))?;
 
         let prompt = format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", system_prompt, text);
@@ -48,7 +51,7 @@ impl LlamaEngine {
         let mut response = String::new();
         let mut decoder = encoding_rs::UTF_8.new_decoder();
         
-        for _ in 0..100 {
+        for _ in 0..300 {
             let candidates = ctx.candidates_ith(batch.n_tokens() - 1);
             let mut candidates_p = LlamaTokenDataArray::from_iter(candidates, false);
             let token_id = candidates_p.sample_token_greedy();

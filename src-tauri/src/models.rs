@@ -52,7 +52,7 @@ impl ModelManager {
     }
 
     pub fn get_llama_path(&self) -> PathBuf {
-        self.base_path.join("smollm2-360m-instruct-q4_k_m.gguf")
+        self.base_path.join("qwen2.5-1.5b-instruct-q4_k_m.gguf")
     }
 
     pub fn models_exist(&self) -> bool {
@@ -65,7 +65,7 @@ pub async fn get_models_info(app_handle: AppHandle) -> Result<ModelsStateInfo, S
     let manager = ModelManager::new(&app_handle)?;
     let models_meta = vec![
         ("Whisper Small (General)", "ggml-small.bin"),
-        ("SmolLM2-360M (Refinement)", "smollm2-360m-instruct-q4_k_m.gguf"),
+        ("Qwen2.5-1.5B (Refinement)", "qwen2.5-1.5b-instruct-q4_k_m.gguf"),
     ];
 
     let mut models = Vec::new();
@@ -130,7 +130,7 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
 
     let models = vec![
         ("ggml-small.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
-        ("smollm2-360m-instruct-q4_k_m.gguf", "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf"),
+        ("qwen2.5-1.5b-instruct-q4_k_m.gguf", "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"),
     ];
 
     let current_model_names: std::collections::HashSet<&str> = models.iter().map(|(name, _)| *name).collect();
@@ -223,6 +223,6 @@ mod tests {
         let whisper_path = manager.get_whisper_path();
         let llama_path = manager.get_llama_path();
         assert!(whisper_path.to_str().unwrap().contains("ggml-small.bin"));
-        assert!(llama_path.to_str().unwrap().contains("smollm2-360m-instruct"));
+        assert!(llama_path.to_str().unwrap().contains("qwen2.5-1.5b-instruct"));
     }
 }
