@@ -28,6 +28,7 @@ struct NativeShortcuts {
 
 static NATIVE_SHORTCUTS: OnceLock<Mutex<NativeShortcuts>> = OnceLock::new();
 static LAST_EVENT_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static IS_PTT_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "macos")]
 fn macos_keycode_to_name(keycode: u16) -> String {
@@ -145,6 +146,13 @@ mod native_ffi {
     }
 }
 
+fn play_sound(name: &str) {
+    let path = format!("/System/Library/Sounds/{}.aiff", name);
+    let _ = std::process::Command::new("afplay")
+        .arg(path)
+        .spawn();
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" fn native_tap_callback(
     _proxy: *mut std::os::raw::c_void,
@@ -160,6 +168,7 @@ unsafe extern "C" fn native_tap_callback(
     let is_system_event = _type == 14;
     let is_key_down = _type == 10;
     let is_key_up = _type == 11;
+    let is_flags_changed = _type == 12;
 
     // field 9 is kCGKeyboardEventKeycode
     let key_code = unsafe { native_ffi::CGEventGetIntegerValueField(event_ref, 9) } as u16;
@@ -183,8 +192,19 @@ unsafe extern "C" fn native_tap_callback(
                 let is_hardware_key = key_code == 176 || key_code == 179;
 
                 if current_accel == shortcuts.ptt {
-                    matched = true;
-                    event_to_send = Some(DictationEvent::StartRecording);
+                    let is_autorepeat = unsafe { native_ffi::CGEventGetIntegerValueField(event_ref, 7) } != 0;
+                    if is_autorepeat {
+                        return std::ptr::null_mut();
+                    }
+                    
+                    let is_recording = app_handle.state::<RecordingState>().0.load(std::sync::atomic::Ordering::SeqCst);
+                    if !is_recording {
+                        matched = true;
+                        event_to_send = Some(DictationEvent::StartRecording);
+                    } else {
+                        // Already recording, just swallow the event to prevent system interference
+                        return std::ptr::null_mut();
+                    }
                 } else if current_accel == shortcuts.hands_free || (key_code == 176 && (shortcuts.hands_free == "F5" || shortcuts.hands_free == "Dictation")) {
                     matched = true;
                     let is_recording = app_handle.state::<RecordingState>().0.load(std::sync::atomic::Ordering::SeqCst);
@@ -227,9 +247,15 @@ unsafe extern "C" fn native_tap_callback(
                             match ev {
                                 DictationEvent::StartRecording => {
                                     app_handle.state::<RecordingState>().0.store(true, std::sync::atomic::Ordering::SeqCst);
+                                    if current_accel == shortcuts.ptt {
+                                        IS_PTT_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+                                    }
+                                    play_sound("Tink");
                                 },
                                 DictationEvent::StopRecording | DictationEvent::CancelRecording => {
                                     app_handle.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+                                    IS_PTT_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+                                    play_sound("Pop");
                                 }
                             }
                             let _ = tx.send(ev);
@@ -245,15 +271,35 @@ unsafe extern "C" fn native_tap_callback(
         
         if let Some(shortcuts_mutex) = NATIVE_SHORTCUTS.get() {
             if let Ok(shortcuts) = shortcuts_mutex.lock() {
-                if current_accel == shortcuts.ptt {
-                    if let Ok(tx) = app_handle.state::<DictationSender>().0.lock() {
-                        app_handle.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
-                        let _ = tx.send(DictationEvent::StopRecording);
+                if current_accel == shortcuts.ptt || IS_PTT_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+                    if shortcuts.ptt.ends_with(&key_name) {
+                        if let Ok(tx) = app_handle.state::<DictationSender>().0.lock() {
+                            app_handle.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+                            IS_PTT_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+                            let _res = tx.send(DictationEvent::StopRecording);
+                            play_sound("Pop");
+                        }
+                        return std::ptr::null_mut();
                     }
-                    return std::ptr::null_mut();
                 }
                 if current_accel == shortcuts.hands_free || (key_code == 176 && (shortcuts.hands_free == "F5" || shortcuts.hands_free == "Dictation")) {
                     return std::ptr::null_mut();
+                }
+            }
+        }
+    } else if is_flags_changed {
+        if IS_PTT_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Some(shortcuts_mutex) = NATIVE_SHORTCUTS.get() {
+                if let Ok(shortcuts) = shortcuts_mutex.lock() {
+                    let current_modifiers = flags_to_string(flags);
+                    if !shortcuts.ptt.starts_with(&current_modifiers) {
+                        if let Ok(tx) = app_handle.state::<DictationSender>().0.lock() {
+                            app_handle.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+                            IS_PTT_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+                            let _res = tx.send(DictationEvent::StopRecording);
+                            play_sound("Pop");
+                        }
+                    }
                 }
             }
         }
