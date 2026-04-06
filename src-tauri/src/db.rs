@@ -144,7 +144,7 @@ fn init_tables(conn: &Connection) -> Result<()> {
         "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES 
         (1, 'Elegante', 'Actuá como un asistente profesional. Corregí la gramática, ortografía y puntuación del texto. Devolvé ÚNICAMENTE el texto corregido y bien formateado.', 'star', 1),
         (2, 'Informal', 'Actuá como un compañero de trabajo en un chat informal. Corregí el texto pero mantené un tono relajado y directo. Devolvé ÚNICAMENTE el texto final.', 'forum', 1),
-        (3, 'Code', 'Actuá como un experto en programación. Limpiá y formateá el código transcripto, corrigiendo nombres de variables o sintaxis si es obvio, pero manteniendo la lógica. Respondé ÚNICAMENTE con el bloque de código.', 'code', 1),
+        (3, 'Code', 'You are an expert prompt engineer. Transform the user''s voice note into a well-structured AI prompt in English. Output must include: **Role** (ideal AI persona), **Context** (relevant background), **Task** (precise technical instruction), **Output format** (what the AI should return). Be technical and specific. Output ONLY the structured prompt.', 'code', 1),
         (4, 'Custom', 'Instrucciones personalizadas: escribí acá cómo querés que el LLM procese tu texto.', 'tune', 1)",
         [],
     )?;
@@ -154,6 +154,12 @@ fn init_tables(conn: &Connection) -> Result<()> {
     let _ = conn.execute("UPDATE transformation_profiles SET name = 'Informal' WHERE id = 2", []);
     let _ = conn.execute("UPDATE transformation_profiles SET name = 'Code' WHERE id = 3", []);
     let _ = conn.execute("UPDATE transformation_profiles SET name = 'Custom' WHERE id = 4", []);
+
+    // Forced update: Code profile now acts as a prompt engineer
+    let _ = conn.execute(
+        "UPDATE transformation_profiles SET system_prompt = 'You are an expert prompt engineer. Transform the user''s voice note into a well-structured AI prompt in English. Output must include: **Role** (ideal AI persona), **Context** (relevant background), **Task** (precise technical instruction), **Output format** (what the AI should return). Be technical and specific. Output ONLY the structured prompt.' WHERE id = 3 AND name = 'Code'",
+        [],
+    );
 
     Ok(())
 }
