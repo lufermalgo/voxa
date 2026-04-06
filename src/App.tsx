@@ -93,7 +93,6 @@ function App() {
     return (
       <div className="h-screen w-screen bg-background text-on-surface overflow-hidden">
         <SettingsPanel 
-          onClose={() => getCurrentWindow().hide()} 
           initialTab={activeTab}
           uiLocale={uiLocale}
         />

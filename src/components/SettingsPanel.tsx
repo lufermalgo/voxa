@@ -5,7 +5,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Locale, translations } from "../i18n";
 
 interface SettingsPanelProps {
-  onClose: () => void;
   initialTab?: string;
   uiLocale: Locale;
 }
@@ -15,7 +14,7 @@ interface AudioDevice {
   name: string;
 }
 
-export function SettingsPanel({ onClose, initialTab = "general", uiLocale }: SettingsPanelProps) {
+export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPanelProps) {
   const t = translations[uiLocale];
   const { settings, profiles, dictionary, updateSetting, addWord, removeWord, updateProfile, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
@@ -147,9 +146,6 @@ export function SettingsPanel({ onClose, initialTab = "general", uiLocale }: Set
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="w-12 h-12 flex items-center justify-center bg-on-surface/5 hover:bg-on-surface/10 rounded-full transition-all text-on-surface-variant hover:text-on-surface group">
-          <span className="material-symbols-outlined text-[24px] group-hover:rotate-90 transition-transform">close</span>
-        </button>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
