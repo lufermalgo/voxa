@@ -70,6 +70,11 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 
 Voxa uses a decoupled **MPSC (Multi-Producer Single-Consumer)** architecture to bridge the asynchronous audio recording stream with the transcription engine, ensuring the UI remains responsive even during heavy inference tasks.
 
+## 📚 Technical Documentation
+
+For deep dives into specific technical implementations, see:
+- [macOS Native Event Tap & Shortcut Architecture](docs/architecture/shortcuts-native-tap.md)
+
 ---
 
 <div align="center">
