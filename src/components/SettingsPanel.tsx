@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useSettings } from "../hooks/useSettings";
+import { useSettings, AppSettings } from "../hooks/useSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -19,7 +19,9 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const t = translations[uiLocale];
   const { settings, profiles, dictionary, updateSetting, addWord, removeWord, updateProfile, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
-  const [isCapturingShortcut, setIsCapturingShortcut] = useState(false);
+  const [capturingShortcutFor, setCapturingShortcutFor] = useState<keyof AppSettings | null>(null);
+  const capturingRef = useRef<keyof AppSettings | null>(null);
+  const updateSettingRef = useRef(updateSetting);
   const [newWord, setNewWord] = useState("");
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
@@ -133,24 +135,60 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
     }
   };
 
-  const handleShortcutKeyDown = (e: React.KeyboardEvent) => {
-    if (!isCapturingShortcut) return;
-    e.preventDefault();
-    e.stopPropagation();
 
-    const modifiers = [];
-    if (e.altKey) modifiers.push("Alt");
-    if (e.ctrlKey) modifiers.push("Control");
-    if (e.metaKey) modifiers.push("Command");
-    if (e.shiftKey) modifiers.push("Shift");
+  // Keep refs up to date on every render so the keydown listener always reads fresh values
+  capturingRef.current = capturingShortcutFor;
+  updateSettingRef.current = updateSetting;
 
-    const key = e.key === " " ? "Space" : e.key.charAt(0).toUpperCase() + e.key.slice(1);
-    if (["Alt", "Control", "Command", "Shift", "Meta"].includes(key)) return;
+  // Unregister Tauri shortcuts when entering capture mode, restore when leaving.
+  useEffect(() => {
+    if (!capturingShortcutFor) return;
 
-    const shortcut = [...modifiers, key].join("+");
-    updateSetting("global_shortcut", shortcut);
-    setIsCapturingShortcut(false);
-  };
+    let isCancelled = false;
+
+    const performCapture = async () => {
+      try {
+        console.log("--- STARTING NATIVE CAPTURE ---");
+        await invoke("unregister_all_shortcuts");
+        const result = await invoke<string>("start_native_key_capture");
+        
+        if (isCancelled) {
+          console.log("Capture component unmounted, ignoring result.");
+          return;
+        }
+
+        console.log("Native capture result:", result);
+        // Special case: Escape to cancel, or if it's Just a modifier + something we can't map
+        if (result === "Escape") {
+          setCapturingShortcutFor(null);
+        } else if (result) {
+          updateSetting(capturingShortcutFor, result);
+          setCapturingShortcutFor(null);
+        }
+      } catch (e) {
+        console.error("Native Capture Error:", e);
+        // Fallback or just stop
+        setCapturingShortcutFor(null);
+      } finally {
+        if (!isCancelled) {
+          await invoke("apply_all_shortcuts").catch(console.error);
+        }
+      }
+    };
+
+    performCapture();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [capturingShortcutFor, updateSetting]);
+
+  // Clean up: We no longer need the global window keydown listener for shortcut capture 
+  // since we use the native macOS NSEvent monitoring to avoid the "bonk" sound.
+  useEffect(() => {
+    // If we want to support non-macOS later, we could re-add a conditional listener here.
+    // For now, on Mac, the native capture is the only source of truth.
+  }, []);
 
   if (loading || !settings) return (
     <div className="h-full w-full flex items-center justify-center bg-background">
@@ -167,7 +205,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   ];
 
   return (
-    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none" onKeyDown={handleShortcutKeyDown} tabIndex={0}>
+    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
       <header className="flex items-center justify-between p-8 glass-panel">
         <div className="flex items-center gap-5">
           <div className="w-12 h-12 rounded-2xl cta-gradient flex items-center justify-center">
@@ -645,14 +683,23 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     <p className="text-sm text-on-surface-variant">{t.settings_subtitle}</p>
                   </div>
 
-                  <div className="grid gap-8">
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em] ml-1">{t.audio_source}</label>
-                      <div className="relative group">
+                  <div className="space-y-6">
+                    {/* Audio Configuration */}
+                    <div className="p-8 rounded-[2rem] bg-surface-container-low/50 border border-surface-container-high transition-all hover:bg-surface-container-low hover:shadow-lg group/card">
+                      <div className="flex items-center gap-4 mb-6">
+                         <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover/card:scale-105 transition-transform">
+                           <span className="material-symbols-outlined text-[24px]">mic</span>
+                         </div>
+                         <div>
+                           <h4 className="text-sm font-black text-on-surface uppercase tracking-widest">{t.audio_source}</h4>
+                           {/* Descripciones en duro eliminadas para mantener minimalismo y consistencia i18n */}
+                         </div>
+                      </div>
+                      <div className="relative group pl-[64px]">
                         <select 
                           value={settings.mic_id}
                           onChange={(e) => updateSetting("mic_id", e.target.value)}
-                          className="w-full bg-surface-container-low p-6 rounded-voxa text-on-surface text-sm appearance-none focus:outline-none transition-all cursor-pointer hover:bg-surface-container-high font-bold"
+                          className="w-full bg-background border border-surface-container-high p-5 rounded-2xl text-on-surface text-sm appearance-none focus:outline-none focus:border-primary/40 transition-all cursor-pointer hover:bg-surface-container-highest font-bold"
                         >
                           <option value="auto">{t.auto_detect}</option>
                           {micDevices.map(dev => <option key={dev.id} value={dev.id}>{dev.name}</option>)}
@@ -663,39 +710,83 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em] ml-1">{t.global_shortcut}</label>
-                      <button
-                        onClick={() => setIsCapturingShortcut(true)}
-                        className={`group w-full p-16 rounded-[4rem] transition-all flex flex-col items-center gap-6 relative overflow-hidden ring-1 shadow-2xl
-                          ${isCapturingShortcut 
-                             ? 'bg-primary/20 ring-primary/40 text-primary' 
-                             : 'bg-surface-container-low/40 ring-on-surface/5 text-on-surface-variant/60 hover:bg-surface-container-high/60 hover:ring-primary/20'}`}
-                      >
-                        {isCapturingShortcut && <div className="absolute inset-0 bg-primary/10 animate-pulse" />}
-                        <div className="text-[11px] font-black uppercase tracking-[0.5em] opacity-40 z-10">{t.selected_shortcut}</div>
-                        <div className="text-6xl font-black tracking-tighter text-on-surface font-headline z-10">
-                          {isCapturingShortcut ? t.listening : settings.global_shortcut.replace("Command", "⌘").replace("Alt", "⌥").replace("Shift", "⇧").replace("Control", "⌃")}
+                    {/* Shortcuts Configuration */}
+                    <div className="p-8 rounded-[2rem] bg-surface-container-low/50 border border-surface-container-high transition-all hover:bg-surface-container-low hover:shadow-lg group/card">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-4">
+                           <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover/card:scale-105 transition-transform">
+                             <span className="material-symbols-outlined text-[24px]">keyboard</span>
+                           </div>
+                           <div>
+                             <h4 className="text-sm font-black text-on-surface uppercase tracking-widest">{t.global_shortcut}</h4>
+                           </div>
                         </div>
-                        {!isCapturingShortcut && (
-                          <div className="mt-8 px-10 py-4 rounded-2xl bg-on-surface/5 text-[10px] font-black uppercase tracking-widest group-hover:bg-primary group-hover:text-background transition-all z-10 shadow-lg">
-                            {t.click_to_change}
-                          </div>
-                        )}
-                      </button>
+                        <button 
+                          onClick={() => {
+                            updateSetting("shortcut_push_to_talk", "Alt+Space");
+                            updateSetting("shortcut_hands_free", "F5");
+                            updateSetting("shortcut_paste", "CommandOrControl+Shift+V");
+                            updateSetting("shortcut_cancel", "Escape");
+                          }}
+                          className="px-4 py-2 rounded-xl bg-on-surface/5 text-on-surface-variant font-black text-[10px] uppercase tracking-widest hover:bg-on-surface/10 transition-all"
+                        >
+                          {t.reset_defaults}
+                        </button>
+                      </div>
+                      
+                      <div className="pl-[64px] grid grid-cols-2 gap-4">
+                        {[
+                          { key: "shortcut_push_to_talk", label: t.shortcut_push_to_talk },
+                          { key: "shortcut_hands_free", label: t.shortcut_hands_free },
+                          { key: "shortcut_paste", label: t.shortcut_paste },
+                          { key: "shortcut_cancel", label: t.shortcut_cancel }
+                        ].map((sc) => {
+                          const isCapturing = capturingShortcutFor === sc.key;
+                          const currentVal = settings[sc.key as keyof AppSettings] as string || "";
+                          const displayVal = isCapturing 
+                             ? t.listening 
+                             : currentVal.replace("CommandOrControl", "⌘").replace("Alt", "⌥").replace("Shift", "⇧").replace("Escape", "Esc");
+                             
+                          return (
+                            <button
+                              key={sc.key}
+                              onClick={() => setCapturingShortcutFor(sc.key as keyof AppSettings)}
+                              className={`group p-6 rounded-[1.5rem] transition-all flex flex-col items-start gap-2 relative overflow-hidden ring-1 shadow-sm
+                                ${isCapturing 
+                                   ? 'bg-primary/20 ring-primary/40 text-primary scale-[1.02]' 
+                                   : 'bg-background ring-surface-container-high text-on-surface hover:bg-surface-container-highest hover:ring-primary/20'}`}
+                            >
+                              {isCapturing && <div className="absolute inset-0 bg-primary/5 animate-pulse" />}
+                              <div className={`text-[10px] font-black uppercase tracking-widest z-10 ${isCapturing ? 'text-primary' : 'text-on-surface-variant'}`}>{sc.label}</div>
+                              <div className="text-xl font-black tracking-tighter z-10 flex items-center justify-between w-full">
+                                <span>{displayVal}</span>
+                                {!isCapturing && <span className="material-symbols-outlined text-[14px] opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.3em] ml-1">{t.transcription_input_lang}</label>
-                      <div className="grid grid-cols-2 gap-4">
+                    {/* Language Configuration */}
+                    <div className="p-8 rounded-[2rem] bg-surface-container-low/50 border border-surface-container-high transition-all hover:bg-surface-container-low hover:shadow-lg group/card">
+                      <div className="flex items-center gap-4 mb-6">
+                         <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover/card:scale-105 transition-transform">
+                           <span className="material-symbols-outlined text-[24px]">translate</span>
+                         </div>
+                         <div>
+                           <h4 className="text-sm font-black text-on-surface uppercase tracking-widest">{t.transcription_input_lang}</h4>
+                         </div>
+                      </div>
+                      <div className="pl-[64px] grid grid-cols-2 gap-4">
                         {['es', 'en'].map(lang => (
                           <button
                             key={lang}
                             onClick={() => updateSetting("language", lang)}
-                            className={`py-8 rounded-[2rem] transition-all text-[12px] font-black uppercase tracking-[0.3em] ring-1
+                            className={`py-8 rounded-[2rem] transition-all text-[11px] font-black uppercase tracking-[0.3em] ring-1
                               ${settings.language === lang 
-                                ? 'bg-primary text-background shadow-[0_15px_40px_rgba(var(--color-primary-rgb),0.3)] ring-transparent scale-[1.03]' 
-                                : 'bg-surface-container-low/40 ring-on-surface/5 text-on-surface-variant/40 hover:bg-surface-container-high/60 hover:text-on-surface hover:ring-on-surface/10'}`}
+                                ? 'bg-primary text-background shadow-lg ring-transparent scale-[1.02]' 
+                                : 'bg-background ring-surface-container-high text-on-surface-variant/40 hover:bg-surface-container-highest hover:text-on-surface hover:ring-on-surface/10'}`}
                           >
                             {lang === 'es' ? t.spanish : t.english}
                           </button>

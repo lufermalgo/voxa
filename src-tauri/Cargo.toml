@@ -42,4 +42,7 @@ sys-locale = "0.3.2"
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"
 objc = "0.2"
+block = "0.1"
+core-graphics = "0.23"
+core-foundation = "0.9"
 

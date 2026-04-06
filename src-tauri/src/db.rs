@@ -85,10 +85,60 @@ fn init_tables(conn: &Connection) -> Result<()> {
         ('language', 'es'),
         ('interaction_mode', 'push_to_talk'),
         ('global_shortcut', 'Alt+Space'),
+        ('shortcut_push_to_talk', 'Alt+Space'),
+        ('shortcut_hands_free', 'F5'),
+        ('shortcut_paste', 'CommandOrControl+Shift+V'),
+        ('shortcut_cancel', 'Escape'),
         ('active_profile_id', '1'),
         ('is_onboarded', 'false')",
         [],
     )?;
+
+    // Migration: normalise old macOS-specific shortcut strings to standard Tauri V2 accelerators
+    conn.execute(
+        "UPDATE app_settings SET value = 'Alt+Space' WHERE key = 'shortcut_push_to_talk' AND value = 'Option+Space'",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE app_settings SET value = 'CommandOrControl+Shift+V' WHERE key = 'shortcut_paste' AND (value = 'Command+Shift+V' OR value = 'Space')",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE app_settings SET value = 'F5' WHERE key = 'shortcut_hands_free' AND (value = 'Dictation' OR value = '176' OR value = 'Function' OR value = '179')",
+        [],
+    )?;
+
+    // Migration: If shortcut_paste or shortcut_push_to_talk are "bare" keys (no modifiers), reset them.
+    // This prevents collisions with normal typing (Space, Backspace, etc.)
+    let settings = get_settings(conn).unwrap_or_default();
+    
+    let needs_reset = |s: &str| -> bool {
+        !s.contains("CommandOrControl+") && 
+        !s.contains("Alt+") && 
+        !s.contains("Control+") && 
+        !s.contains("Shift+") &&
+        !s.starts_with("F") // Allow F1, F2, etc. as they are not "typing" keys
+    };
+
+    if let Some(paste) = settings.get("shortcut_paste") {
+        if needs_reset(paste) {
+            println!("DB MIGRATION: Resetting bare paste shortcut '{}' to default.", paste);
+            conn.execute(
+                "UPDATE app_settings SET value = 'CommandOrControl+Shift+V' WHERE key = 'shortcut_paste'",
+                [],
+            )?;
+        }
+    }
+
+    if let Some(ptt) = settings.get("shortcut_push_to_talk") {
+        if needs_reset(ptt) {
+            println!("DB MIGRATION: Resetting bare PTT shortcut '{}' to default.", ptt);
+            conn.execute(
+                "UPDATE app_settings SET value = 'Alt+Space' WHERE key = 'shortcut_push_to_talk'",
+                [],
+            )?;
+        }
+    }
 
     conn.execute(
         "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES 

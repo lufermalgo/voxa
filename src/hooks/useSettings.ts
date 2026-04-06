@@ -6,6 +6,10 @@ export interface AppSettings {
   language: string;
   interaction_mode: string;
   global_shortcut: string;
+  shortcut_push_to_talk: string;
+  shortcut_hands_free: string;
+  shortcut_paste: string;
+  shortcut_cancel: string;
   active_profile_id: string;
 }
 
@@ -73,11 +77,9 @@ export function useSettings() {
       // Update local state immediately for better UX
       setSettings((prev) => (prev ? { ...prev, [key]: value } : null));
 
-      // If we just updated the global_shortcut, we might want to register it via Rust
-      // The Rust side should probably handle unregistering the old and registering the new shortcut
-      // Wait, let's trigger a Rust command to apply the new shortcut
-      if (key === "global_shortcut") {
-        await invoke("apply_shortcut", { shortcut: value });
+      // If we just updated any shortcut, trigger Rust to apply them all
+      if (key === "global_shortcut" || key.startsWith("shortcut_")) {
+        await invoke("apply_all_shortcuts");
       }
     } catch (err: any) {
       console.error(`Failed to update ${key}:`, err);
