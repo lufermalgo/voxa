@@ -127,22 +127,10 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
   // IDLE STATE - Solid Violet Pill (6px height)
   return (
     <div className="animate-in fade-in zoom-in-95 duration-500">
-      <div 
+      <div
         onClick={handleStart}
-        className="bg-primary h-[6px] w-[40px] rounded-voxa flex items-center justify-center shadow-lg hover:shadow-xl relative cursor-pointer overflow-hidden transition-all hover:scale-110 hover:h-[8px] group"
-      >
-        <div className="flex items-center gap-[4px] h-full relative z-10">
-          {[0.2, 0.4, 0.6, 0.8, 1.0].map((delay, i) => (
-            <div 
-              key={i}
-              className={`w-[4px] h-[4px] rounded-full animate-wave ${
-                i === 0 || i === 4 ? 'bg-white/80' : 'bg-white'
-              }`}
-              style={{ animationDelay: `${delay}s` }} 
-            />
-          ))}
-        </div>
-      </div>
+        className="bg-primary h-[6px] w-[40px] rounded-voxa shadow-lg hover:shadow-xl cursor-pointer transition-all hover:scale-110 hover:h-[8px]"
+      />
     </div>
   );
 };
