@@ -11,7 +11,7 @@ export const translations = {
     error_logs: "Error. Check logs.",
     
     // Settings Panel Header
-    neural_engine: "Neural Engine v1.0",
+    app_subtitle: "Intelligent Voice Refinement",
     navigation: "Navigation",
     
     // Tabs
@@ -73,7 +73,7 @@ export const translations = {
     tip_text: "Tip: Use Cmd+L to start a new instant transcription.",
     
     // Footer
-    footer_engine: "Engine v0.1.0 • macOS Native"
+    footer_engine: "Voxa v{version}"
   },
   es: {
     // Recorder Pill
@@ -87,7 +87,7 @@ export const translations = {
     error_logs: "Error. Revisar logs.",
     
     // Settings Panel Header
-    neural_engine: "Motor Neuronal v1.0",
+    app_subtitle: "Refinamiento de Voz Inteligente",
     navigation: "Navegación",
     
     // Tabs
@@ -149,7 +149,7 @@ export const translations = {
     tip_text: "Tip: Usá Cmd+L para iniciar una nueva transcripción instantánea.",
     
     // Footer
-    footer_engine: "Motor v0.1.0 • macOS Nativo"
+    footer_engine: "Voxa v{version}"
   }
 };
 

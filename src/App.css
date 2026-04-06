@@ -165,8 +165,8 @@ h1, h2, h3, h4, .font-headline {
 
 /* Exact IDLE pulse from mock */
 @keyframes wave-pulse {
-  0%, 100% { height: 1px; opacity: 0.4; }
-  50% { height: 4px; opacity: 1; }
+  0%, 100% { height: 4px; opacity: 0.8; }
+  50% { height: 8px; opacity: 1; }
 }
 
 .animate-wave {

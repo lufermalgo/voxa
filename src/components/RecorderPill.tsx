@@ -98,8 +98,8 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
               <div 
                 key={i}
                 className={`w-[2px] rounded-full animate-wave-recording ${
-                  i < 3 || i > 14 ? 'bg-white/40' : 
-                  i === 3 || i === 15 ? 'bg-white/60' : 'bg-white'
+                  i < 3 || i > 14 ? 'bg-white/60' : 
+                  i === 3 || i === 15 ? 'bg-white/80' : 'bg-white'
                 }`}
                 style={{ 
                   animationDelay: `${delay}s`,
@@ -131,12 +131,12 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
         onClick={handleStart}
         className="bg-primary h-[6px] w-[40px] rounded-voxa flex items-center justify-center shadow-lg hover:shadow-xl relative cursor-pointer overflow-hidden transition-all hover:scale-110 hover:h-[8px] group"
       >
-        <div className="flex items-center gap-[1.5px] h-full relative z-10">
+        <div className="flex items-center gap-[4px] h-full relative z-10">
           {[0.2, 0.4, 0.6, 0.8, 1.0].map((delay, i) => (
             <div 
               key={i}
-              className={`w-[1.5px] h-[1px] rounded-full animate-wave ${
-                i === 0 || i === 4 ? 'bg-white/40' : 'bg-white'
+              className={`w-[4px] h-[4px] rounded-full animate-wave ${
+                i === 0 || i === 4 ? 'bg-white/80' : 'bg-white'
               }`}
               style={{ animationDelay: `${delay}s` }} 
             />

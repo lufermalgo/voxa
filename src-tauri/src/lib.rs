@@ -14,7 +14,7 @@ use db::{Transcript, DbState};
 use tauri::{Manager, State, AppHandle, Emitter};
 use std::sync::{Mutex, mpsc, atomic::AtomicBool};
 use rusqlite::params;
-use tauri::menu::{Menu, IconMenuItem, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, IconMenuItem};
 use tauri::tray::TrayIconBuilder;
 use sys_locale::get_locale;
 
@@ -302,25 +302,33 @@ pub fn run() {
             });
 
             // --- NATIVE MENU CONSTRUCTION ---
-            use tauri::menu::{Submenu, MenuItem, PredefinedMenuItem};
+            use tauri::menu::{Submenu, MenuItem, PredefinedMenuItem, CheckMenuItem};
             
             let db_state = app.state::<DbState>();
-            let profiles = {
+            let (profiles, settings) = {
                 let conn_guard = db_state.conn.lock().unwrap();
-                db::get_profiles(&conn_guard)?
+                let p = db::get_profiles(&conn_guard)?;
+                let s = db::get_settings(&conn_guard)?;
+                (p, s)
             };
 
             let sys_lang = get_system_locale();
             let is_es = sys_lang == "es";
 
+            let active_profile_id = settings.get("active_profile_id").cloned().unwrap_or_else(|| "1".to_string());
+            let current_language = settings.get("language").cloned().unwrap_or_else(|| "es".to_string());
+            let current_mic = settings.get("mic_id").cloned().unwrap_or_else(|| "auto".to_string());
+
             let profiles_label = if is_es { "Perfiles" } else { "Profiles" };
             let profiles_menu = Submenu::with_id(app.handle(), "profiles_menu", profiles_label, true)?;
             for profile in profiles {
-                let item = MenuItem::with_id(
+                let is_checked = profile.id.to_string() == active_profile_id;
+                let item = CheckMenuItem::with_id(
                     app.handle(),
                     format!("profile_{}", profile.id),
                     &profile.name,
                     true,
+                    is_checked,
                     None::<&str>
                 )?;
                 profiles_menu.append(&item)?;
@@ -328,20 +336,40 @@ pub fn run() {
 
             let lang_label = if is_es { "Idioma" } else { "Language" };
             let language_menu = Submenu::with_id(app.handle(), "language_menu", lang_label, true)?;
-            let lang_es = MenuItem::with_id(app.handle(), "lang_es", "Español", true, None::<&str>)?;
-            let lang_en = MenuItem::with_id(app.handle(), "lang_en", "English", true, None::<&str>)?;
+            let lang_es = CheckMenuItem::with_id(app.handle(), "lang_es", "Español", true, current_language == "es", None::<&str>)?;
+            let lang_en = CheckMenuItem::with_id(app.handle(), "lang_en", "English", true, current_language == "en", None::<&str>)?;
             language_menu.append(&lang_es)?;
             language_menu.append(&lang_en)?;
 
             let mic_label = if is_es { "Micrófono" } else { "Microphone" };
             let mic_menu = Submenu::with_id(app.handle(), "mic_menu", mic_label, true)?;
+            
+            // Auto-detect option
+            let default_mic_name = audio::get_default_input_device_name().unwrap_or_else(|| "Unknown".to_string());
+            let auto_mic_label = if is_es { 
+                format!("Auto-detectar ({})", default_mic_name) 
+            } else { 
+                format!("Auto-detect ({})", default_mic_name) 
+            };
+            let auto_mic_item = CheckMenuItem::with_id(
+                app.handle(),
+                "mic_auto",
+                &auto_mic_label,
+                true,
+                current_mic == "auto",
+                None::<&str>
+            )?;
+            mic_menu.append(&auto_mic_item)?;
+            mic_menu.append(&PredefinedMenuItem::separator(app.handle())?)?;
+
             let mics = audio::get_input_devices()?;
             for mic in mics {
-                let item = MenuItem::with_id(
+                let item = CheckMenuItem::with_id(
                     app.handle(),
                     format!("mic_{}", mic.name),
                     &mic.name,
                     true,
+                    current_mic == mic.name,
                     None::<&str>
                 )?;
                 mic_menu.append(&item)?;
@@ -369,10 +397,14 @@ pub fn run() {
                 &PredefinedMenuItem::quit(app.handle(), Some(quit_label))?,
             ])?;
 
+            let profiles_menu_c = profiles_menu.clone();
+            let mic_menu_c = mic_menu.clone();
+            let language_menu_c = language_menu.clone();
+
             let tray = TrayIconBuilder::new()
                 .icon(tray_icon)
                 .menu(&tray_menu)
-                .on_menu_event(|app, event| {
+                .on_menu_event(move |app, event| {
                     let id = event.id.as_ref();
                     if id == "settings" {
                         let _ = show_settings(app.clone(), None);
@@ -380,16 +412,41 @@ pub fn run() {
                         let profile_id = id.replace("profile_", "");
                         let db_state = app.state::<DbState>();
                         let _ = update_setting(app.clone(), db_state, "active_profile_id".to_string(), profile_id);
+                        
+                        // Update checkmarks in profiles menu
+                        if let Ok(items) = profiles_menu_c.items() {
+                            for item in items {
+                                if let Some(cmi) = item.as_check_menuitem() {
+                                    let _ = cmi.set_checked(item.id().as_ref() == id);
+                                }
+                            }
+                        }
                     } else if id.starts_with("mic_") {
-                        let mic_name = id.replace("mic_", "");
+                        let mic_id = if id == "mic_auto" { "auto".to_string() } else { id.replace("mic_", "") };
                         let db_state = app.state::<DbState>();
-                        let _ = update_setting(app.clone(), db_state, "mic_id".to_string(), mic_name);
-                    } else if id == "lang_es" {
+                        let _ = update_setting(app.clone(), db_state, "mic_id".to_string(), mic_id);
+
+                        // Update checkmarks in mic menu
+                        if let Ok(items) = mic_menu_c.items() {
+                            for item in items {
+                                if let Some(cmi) = item.as_check_menuitem() {
+                                    let _ = cmi.set_checked(item.id().as_ref() == id);
+                                }
+                            }
+                        }
+                    } else if id == "lang_es" || id == "lang_en" {
+                        let lang = if id == "lang_es" { "es" } else { "en" };
                         let db_state = app.state::<DbState>();
-                        let _ = update_setting(app.clone(), db_state, "language".to_string(), "es".to_string());
-                    } else if id == "lang_en" {
-                        let db_state = app.state::<DbState>();
-                        let _ = update_setting(app.clone(), db_state, "language".to_string(), "en".to_string());
+                        let _ = update_setting(app.clone(), db_state, "language".to_string(), lang.to_string());
+
+                        // Update checkmarks in language menu
+                        if let Ok(items) = language_menu_c.items() {
+                            for item in items {
+                                if let Some(cmi) = item.as_check_menuitem() {
+                                    let _ = cmi.set_checked(item.id().as_ref() == id);
+                                }
+                            }
+                        }
                     }
                 })
                 .build(app)?;

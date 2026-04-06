@@ -33,7 +33,7 @@ pub struct AudioDevice {
 pub fn get_input_devices() -> Result<Vec<AudioDevice>, String> {
     let host = cpal::default_host();
     let devices = host.input_devices().map_err(|e| e.to_string())?;
-    let default_device = host.default_input_device().map(|d| d.name().unwrap_or_default());
+    let default_device = host.default_input_device().and_then(|d| d.name().ok());
 
     let mut result = Vec::new();
     for device in devices {
@@ -46,16 +46,24 @@ pub fn get_input_devices() -> Result<Vec<AudioDevice>, String> {
     Ok(result)
 }
 
+pub fn get_default_input_device_name() -> Option<String> {
+    let host = cpal::default_host();
+    host.default_input_device().and_then(|d| d.name().ok())
+}
+
 pub fn setup_stream(engine: &AudioEngine, mic_id: Option<String>) -> Result<(), String> {
     let host = cpal::default_host();
     
     let device = if let Some(id) = mic_id {
-        if let Ok(devices) = host.input_devices() {
-            devices.filter_map(|d| if d.name().unwrap_or_default() == id { Some(d) } else { None })
-                   .next()
-                   .unwrap_or_else(|| host.default_input_device().expect("No input device found"))
-        } else {
+        if id == "auto" {
             host.default_input_device().ok_or("No input device found")?
+        } else {
+            if let Ok(devices) = host.input_devices() {
+                devices.into_iter().find(|d| d.name().unwrap_or_default() == id)
+                       .unwrap_or_else(|| host.default_input_device().expect("No input device found"))
+            } else {
+                host.default_input_device().ok_or("No input device found")?
+            }
         }
     } else {
         host.default_input_device().ok_or("No input device found")?
@@ -115,12 +123,15 @@ pub fn stop_stream(engine: &AudioEngine, mic_id: Option<String>) -> Result<Vec<f
     let host = cpal::default_host();
     
     let device = if let Some(id) = mic_id {
-        if let Ok(devices) = host.input_devices() {
-            devices.filter_map(|d| if d.name().unwrap_or_default() == id { Some(d) } else { None })
-                   .next()
-                   .unwrap_or_else(|| host.default_input_device().expect("No input device found"))
-        } else {
+        if id == "auto" {
             host.default_input_device().ok_or("No input device found")?
+        } else {
+            if let Ok(devices) = host.input_devices() {
+                devices.into_iter().find(|d| d.name().unwrap_or_default() == id)
+                       .unwrap_or_else(|| host.default_input_device().expect("No input device found"))
+            } else {
+                host.default_input_device().ok_or("No input device found")?
+            }
         }
     } else {
         host.default_input_device().ok_or("No input device found")?

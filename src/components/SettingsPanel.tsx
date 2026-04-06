@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Locale, translations } from "../i18n";
 
@@ -20,6 +21,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
   const [isCapturingShortcut, setIsCapturingShortcut] = useState(false);
   const [newWord, setNewWord] = useState("");
+  const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
   
@@ -50,6 +52,18 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const version = await getVersion();
+        setAppVersion(version);
+      } catch (err) {
+        console.error("Failed to fetch app version:", err);
+      }
+    };
+    fetchVersion();
+  }, []);
 
   const loadHistory = async () => {
     try {
@@ -142,7 +156,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
             <h1 className="text-xl font-bold text-on-surface tracking-widest font-headline">Voxa</h1>
             <div className="flex items-center gap-2.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <p className="font-label">{t.neural_engine}</p>
+              <p className="font-label">{t.app_subtitle}</p>
             </div>
           </div>
         </div>
@@ -590,7 +604,9 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
       </div>
 
       <footer className="p-8 bg-surface-container-low/60 flex justify-between items-center">
-        <div className="text-[9px] text-on-surface-variant/20 font-black uppercase tracking-[0.4em]">Engine v0.1.0 • macOS Native</div>
+        <div className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-[0.4em]">
+          {t.footer_engine.replace("{version}", appVersion)}
+        </div>
         <div className="flex gap-4">
            {/* Add more footer actions if needed */}
         </div>
