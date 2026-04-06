@@ -129,13 +129,13 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
     let client = Client::new();
 
     let models = vec![
-        ("ggml-small.bin", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
-        ("smollm2-1.7b-instruct-q4_k_m.gguf", "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf"),
+        ("ggml-small.bin", "Whisper", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
+        ("smollm2-1.7b-instruct-q4_k_m.gguf", "SmolLM2-1.7B", "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf"),
     ];
 
-    let current_model_names: std::collections::HashSet<&str> = models.iter().map(|(name, _)| *name).collect();
+    let current_model_names: std::collections::HashSet<&str> = models.iter().map(|(name, _, _)| *name).collect();
 
-    for (name, url) in &models {
+    for (name, display_name, url) in &models {
         let target_path = manager.base_path.join(name);
         println!("Checking model: {}", name);
         
@@ -168,7 +168,7 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
                 if total_size > 0 {
                     let progress = (downloaded as f64 / total_size as f64) * 100.0;
                     app_handle.emit("download-progress", DownloadProgress {
-                        model: name.to_string(),
+                        model: display_name.to_string(),
                         progress,
                         total: total_size,
                         current: downloaded,
