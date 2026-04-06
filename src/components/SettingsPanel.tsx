@@ -26,6 +26,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
+  const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'clear' } | null>(null);
   
   // State for models
   const [modelsInfo, setModelsInfo] = useState<any>(null);
@@ -112,7 +113,12 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
     };
   }, []);
 
-  const deleteTranscript = async (id: number) => {
+  const deleteTranscript = (id: number) => {
+    setConfirmModal({ type: 'delete', id });
+  };
+
+  const executeDelete = async (id: number) => {
+    setConfirmModal(null);
     try {
       await invoke("delete_transcript", { id });
       loadHistory();
@@ -121,17 +127,19 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
     }
   };
 
-  const clearHistory = async () => {
-    if (confirm(t.confirm_clear)) {
-      try {
-        // Assume there's a clear_history command or just delete all IDs
-        for (const t of transcripts) {
-          await invoke("delete_transcript", { id: t.id });
-        }
-        loadHistory();
-      } catch (err) {
-        console.error("Error clearing history:", err);
+  const clearHistory = () => {
+    setConfirmModal({ type: 'clear' });
+  };
+
+  const executeClearHistory = async () => {
+    setConfirmModal(null);
+    try {
+      for (const transcript of transcripts) {
+        await invoke("delete_transcript", { id: transcript.id });
       }
+      loadHistory();
+    } catch (err) {
+      console.error("Error clearing history:", err);
     }
   };
 
@@ -277,7 +285,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     <p className="text-sm text-on-surface-variant">{t.history_subtitle}</p>
                   </div>
                   {transcripts.length > 0 && (
-                    <button 
+                    <button
                       onClick={clearHistory}
                       className="px-4 py-2 rounded-xl bg-error/10 text-error text-[10px] font-black uppercase tracking-widest hover:bg-error/20 transition-all"
                     >
@@ -295,7 +303,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                         </span>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <CopyButton text={transcript.content} copyLabel={t.copy_text} />
-                          <button 
+                          <button
                             onClick={() => deleteTranscript(transcript.id)}
                             className="p-2 rounded-lg bg-error/10 text-error/40 hover:text-error hover:bg-error/20 transition-all"
                             title={t.delete}
@@ -816,6 +824,36 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
            {/* Add more footer actions if needed */}
         </div>
       </footer>
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/20 backdrop-blur-sm">
+          <div className="bg-surface rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-6 space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-base font-black text-on-surface font-headline uppercase tracking-widest">
+                {t.delete}
+              </h3>
+              <p className="text-sm text-on-surface-variant">
+                {confirmModal.type === 'clear' ? t.confirm_clear : t.confirm_delete_transcript}
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="px-5 py-2 rounded-xl bg-surface-container text-on-surface-variant text-[11px] font-black uppercase tracking-widest hover:bg-surface-container-high transition-all"
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={() => confirmModal.type === 'clear' ? executeClearHistory() : executeDelete(confirmModal.id)}
+                className="px-5 py-2 rounded-xl bg-error text-white text-[11px] font-black uppercase tracking-widest hover:bg-error/90 transition-all"
+              >
+                {t.delete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
