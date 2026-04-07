@@ -29,13 +29,14 @@ export const translations = {
     no_transcripts: "No transcriptions yet",
     copy_text: "Copy text",
     delete: "Delete",
-    
+    edit: "Edit",
+    learned_words: "Added to dictionary",
+
     // Profiles Section
     transformation_profiles: "Transformation Profiles",
     profiles_subtitle: "Define how the AI should refine and format your speech.",
     active: "ACTIVE",
     exact_transcription: "Exact transcription without refinement.",
-    edit: "Edit",
     save_profile: "Save Profile",
     name_label: "Profile Name",
     icon_label: "Visual Icon",
@@ -122,13 +123,14 @@ export const translations = {
     no_transcripts: "No hay transcripciones aún",
     copy_text: "Copiar texto",
     delete: "Eliminar",
+    edit: "Editar",
+    learned_words: "Agregado al diccionario",
     
     // Profiles Section
     transformation_profiles: "Perfiles de Transformación",
     profiles_subtitle: "Definí cómo la IA debe refinar y dar formato a lo que decís.",
     active: "ACTIVO",
     exact_transcription: "Transcripción exacta sin refinamiento.",
-    edit: "Editar",
     save_profile: "Guardar Perfil",
     name_label: "Nombre del Perfil",
     icon_label: "Icono Visual",

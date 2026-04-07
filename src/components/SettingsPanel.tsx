@@ -26,6 +26,9 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
+  const [editingTranscriptId, setEditingTranscriptId] = useState<number | null>(null);
+  const [editingTranscriptText, setEditingTranscriptText] = useState("");
+  const [learnedWords, setLearnedWords] = useState<string[]>([]);
   const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'delete-profile', id: number, name: string } | { type: 'clear' } | { type: 'redownload' } | null>(null);
   
   // State for models
@@ -112,6 +115,30 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
       unlistenProgress.then(f => f());
     };
   }, []);
+
+  const startEditTranscript = (id: number, content: string) => {
+    setEditingTranscriptId(id);
+    setEditingTranscriptText(content);
+    setLearnedWords([]);
+  };
+
+  const saveTranscriptEdit = async (rawContent: string) => {
+    if (editingTranscriptId === null) return;
+    try {
+      const learned = await invoke<string[]>("update_transcript", {
+        id: editingTranscriptId,
+        newContent: editingTranscriptText,
+        rawContent,
+      });
+      setLearnedWords(learned);
+      setTranscripts(prev => prev.map(t =>
+        t.id === editingTranscriptId ? { ...t, content: editingTranscriptText } : t
+      ));
+      if (learned.length === 0) setEditingTranscriptId(null);
+    } catch (err) {
+      console.error("Error saving transcript:", err);
+    }
+  };
 
   const deleteTranscript = (id: number) => {
     setConfirmModal({ type: 'delete', id });
@@ -241,7 +268,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-black text-on-surface tracking-[0.3em] font-headline uppercase leading-none">Voxa</h1>
+            <h1 className="text-2xl font-black text-on-surface font-headline leading-none">Voxa</h1>
             <div className="flex items-center gap-2 mt-2">
               <span className="w-2 h-2 rounded-full bg-primary/40" />
               <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em] opacity-70 leading-none">{t.app_subtitle}</p>
@@ -310,28 +337,77 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                 </div>
 
                 <div className="grid gap-6">
-                  {transcripts.map((transcript) => (
+                  {transcripts.map((transcript) => {
+                    const isEditing = editingTranscriptId === transcript.id;
+                    return (
                     <div key={transcript.id} className="group relative p-8 rounded-voxa bg-surface-container-low hover:bg-surface-container-high transition-all duration-500 shadow-lg">
                       <div className="flex justify-between items-start gap-4 mb-4">
                         <span className="text-[10px] font-mono text-on-surface-variant uppercase tracking-widest">
                           {new Date(transcript.timestamp).toLocaleDateString()} • {new Date(transcript.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <CopyButton text={transcript.content} copyLabel={t.copy_text} />
-                          <button
-                            onClick={() => deleteTranscript(transcript.id)}
-                            className="p-2 rounded-lg bg-error/10 text-error/40 hover:text-error hover:bg-error/20 transition-all"
-                            title={t.delete}
-                          >
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
-                          </button>
+                          {!isEditing && <CopyButton text={transcript.content} copyLabel={t.copy_text} />}
+                          {!isEditing && (
+                            <button
+                              onClick={() => startEditTranscript(transcript.id, transcript.content)}
+                              className="p-2 rounded-lg bg-primary/10 text-primary/40 hover:text-primary hover:bg-primary/20 transition-all"
+                              title={t.edit ?? "Edit"}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">edit</span>
+                            </button>
+                          )}
+                          {!isEditing && (
+                            <button
+                              onClick={() => deleteTranscript(transcript.id)}
+                              className="p-2 rounded-lg bg-error/10 text-error/40 hover:text-error hover:bg-error/20 transition-all"
+                              title={t.delete}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <p className="text-sm text-on-surface leading-loose font-medium pr-12">
-                        {transcript.content}
-                      </p>
+
+                      {isEditing ? (
+                        <div className="space-y-4">
+                          <textarea
+                            className="w-full text-sm text-on-surface leading-loose font-medium bg-surface-container rounded-xl p-4 border border-primary/20 focus:border-primary outline-none resize-none"
+                            rows={4}
+                            value={editingTranscriptText}
+                            onChange={e => setEditingTranscriptText(e.target.value)}
+                            autoFocus
+                          />
+                          {learnedWords.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/60">{t.learned_words ?? "Learned"}:</span>
+                              {learnedWords.map(w => (
+                                <span key={w} className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">{w}</span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => saveTranscriptEdit(transcript.raw_content)}
+                              className="flex-1 bg-primary text-white py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all"
+                            >
+                              {t.save_profile ?? "Save"}
+                            </button>
+                            <button
+                              onClick={() => { setEditingTranscriptId(null); setLearnedWords([]); }}
+                              className="px-6 bg-on-surface/5 text-on-surface/40 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-on-surface/10 transition-all"
+                            >
+                              {t.cancel}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-on-surface leading-loose font-medium pr-12">
+                          {transcript.content}
+                        </p>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   {transcripts.length === 0 && (
                     <div className="py-20 flex flex-col items-center justify-center space-y-4 border-2 border-dashed border-surface-container-high rounded-[3rem]">
                       <span className="material-symbols-outlined text-5xl text-on-surface-variant/10">history</span>
@@ -814,7 +890,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
       </div>
 
       <footer className="p-8 bg-surface-container-low/60 flex justify-between items-center">
-        <div className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-[0.4em]">
+        <div className="text-[9px] text-on-surface-variant/60 font-black tracking-widest">
           {t.footer_engine.replace("{version}", appVersion)}
         </div>
         <div className="flex gap-4">

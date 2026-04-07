@@ -18,14 +18,16 @@ function App() {
   const [downloadStatus, setDownloadStatus] = useState("");
   const [uiLocale, setUiLocale] = useState<Locale>("en");
 
-  const fetchSettings = async () => {
+  const fetchSettings = async (): Promise<Locale> => {
     try {
       await invoke("get_settings");
-      
       const systemLocale = await invoke<string>("get_system_locale");
-      setUiLocale(systemLocale.startsWith("es") ? "es" : "en");
+      const locale: Locale = systemLocale.startsWith("es") ? "es" : "en";
+      setUiLocale(locale);
+      return locale;
     } catch (err) {
       console.error("Error fetching settings:", err);
+      return "es";
     }
   };
 
@@ -38,27 +40,27 @@ function App() {
         const exists = await invoke<boolean>("check_models_status");
         setHasModels(exists);
         
-        await fetchSettings();
+        const locale = await fetchSettings();
 
         if (!exists) {
+          const t = translations[locale];
           const label = getCurrentWindow().label;
-          const isEs = (await invoke<string>("get_system_locale")).startsWith("es");
 
           if (label === "main") {
             setIsDownloading(true);
-            setDownloadStatus(isEs ? "Proveyendo IA (Metal)..." : "Provisioning AI (Metal)...");
+            setDownloadStatus(locale === "es" ? "Proveyendo IA (Metal)..." : "Provisioning AI (Metal)...");
             try {
               await invoke("download_models");
-              setDownloadStatus(isEs ? "Listo" : "Ready");
+              setDownloadStatus(locale === "es" ? "Listo" : "Ready");
               setIsDownloading(false);
               setHasModels(true);
             } catch (error) {
               console.error("Error downloading models:", error);
-              setDownloadStatus(isEs ? "Error. Revisar logs." : "Error. Check logs.");
+              setDownloadStatus(locale === "es" ? "Error. Revisar logs." : "Error. Check logs.");
             }
           } else {
             setIsDownloading(true);
-            setDownloadStatus(isEs ? "Descargando IA..." : "Downloading AI...");
+            setDownloadStatus(t.downloading_model.replace("{model}", "AI").replace("{progress}", "0"));
           }
         }
       } catch (err) {

@@ -60,9 +60,17 @@ export function useSettings() {
       listen("profiles-updated", () => fetchSettings())
     );
 
+    const unlistenDictionary = import("@tauri-apps/api/event").then(({ listen }) =>
+      listen("dictionary-updated", async () => {
+        const d = await invoke<string[]>("get_custom_dictionary");
+        setDictionary(d);
+      })
+    );
+
     return () => {
       unlistenSettings.then(unlisten => unlisten());
       unlistenProfiles.then(unlisten => unlisten());
+      unlistenDictionary.then(unlisten => unlisten());
     };
   }, [fetchSettings]);
 
