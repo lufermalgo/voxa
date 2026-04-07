@@ -18,6 +18,7 @@ export interface Profile {
   name: string;
   system_prompt: string;
   icon?: string;
+  is_default: boolean;
 }
 
 export function useSettings() {

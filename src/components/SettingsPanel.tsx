@@ -26,7 +26,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [activeTab, setActiveTab] = useState(initialTab === 'general' ? 'history' : initialTab);
   const [transcripts, setTranscripts] = useState<any[]>([]);
-  const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'clear' } | { type: 'redownload' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ type: 'delete', id: number } | { type: 'delete-profile', id: number, name: string } | { type: 'clear' } | { type: 'redownload' } | null>(null);
   
   // State for models
   const [modelsInfo, setModelsInfo] = useState<any>(null);
@@ -451,13 +451,9 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                                 {t.save_profile}
                               </button>
                               
-                              {profile.id > 4 && (
-                                <button 
-                                  onClick={() => {
-                                    if (confirm(t.confirm_delete_profile.replace("{name}", profile.name))) {
-                                      deleteProfile(profile.id);
-                                    }
-                                  }}
+                              {!profile.is_default && (
+                                <button
+                                  onClick={() => setConfirmModal({ type: 'delete-profile', id: profile.id, name: profile.name })}
                                   className="px-8 bg-error/10 text-error py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-error/20 active:scale-95 transition-all"
                                 >
                                   {t.borrar}
@@ -837,6 +833,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
               <p className="text-sm text-on-surface-variant">
                 {confirmModal.type === 'clear' ? t.confirm_clear
                   : confirmModal.type === 'redownload' ? t.redownload + "?"
+                  : confirmModal.type === 'delete-profile' ? t.confirm_delete_profile.replace("{name}", confirmModal.name)
                   : t.confirm_delete_transcript}
               </p>
             </div>
@@ -851,6 +848,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                 onClick={() => {
                   if (confirmModal.type === 'redownload') executeRedownload();
                   else if (confirmModal.type === 'clear') executeClearHistory();
+                  else if (confirmModal.type === 'delete-profile') { deleteProfile(confirmModal.id); setConfirmModal(null); setEditingProfileId(null); }
                   else executeDelete(confirmModal.id);
                 }}
                 className="px-5 py-2 rounded-xl bg-error text-white text-[11px] font-black uppercase tracking-widest hover:bg-error/90 transition-all"

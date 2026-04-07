@@ -141,23 +141,39 @@ fn init_tables(conn: &Connection) -> Result<()> {
     }
 
     conn.execute(
-        "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES 
-        (1, 'Elegante', 'Actuá como un asistente profesional. Corregí la gramática, ortografía y puntuación del texto. Devolvé ÚNICAMENTE el texto corregido y bien formateado.', 'star', 1),
-        (2, 'Informal', 'Actuá como un compañero de trabajo en un chat informal. Corregí el texto pero mantené un tono relajado y directo. Devolvé ÚNICAMENTE el texto final.', 'forum', 1),
-        (3, 'Code', 'You are an expert prompt engineer. Transform the user''s voice note into a well-structured AI prompt in English. Output must include: **Role** (ideal AI persona), **Context** (relevant background), **Task** (precise technical instruction), **Output format** (what the AI should return). Be technical and specific. Output ONLY the structured prompt.', 'code', 1),
+        "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES
+        (1, 'Elegante', 'Sos un editor profesional. Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas — solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito, sin explicaciones ni comentarios.', 'star', 1),
+        (2, 'Informal', 'Sos un asistente de mensajería casual. Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final, sin explicaciones.', 'forum', 1),
+        (3, 'Code', 'You are a senior prompt engineer. Transform the voice note into a complete, ready-to-use AI prompt in English. Structure it exactly as follows — no extra text before or after:
+
+**Role:** [specific AI persona with expertise]
+**Context:** [background, constraints, and relevant details]
+**Task:** [precise, actionable instruction — what the AI must do]
+**Output:** [exact format, length, and structure expected]
+
+Be specific and technical. The output must be a prompt someone can paste directly into an AI tool.', 'code', 1),
         (4, 'Custom', 'Instrucciones personalizadas: escribí acá cómo querés que el LLM procese tu texto.', 'tune', 1)",
         [],
     )?;
 
-    // Forced update for existing installations to match requested names
-    let _ = conn.execute("UPDATE transformation_profiles SET name = 'Elegante' WHERE id = 1", []);
-    let _ = conn.execute("UPDATE transformation_profiles SET name = 'Informal' WHERE id = 2", []);
-    let _ = conn.execute("UPDATE transformation_profiles SET name = 'Code' WHERE id = 3", []);
-    let _ = conn.execute("UPDATE transformation_profiles SET name = 'Custom' WHERE id = 4", []);
-
-    // Forced update: Code profile now acts as a prompt engineer
+    // Forced update for existing installations — always overwrites to latest prompt version
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'You are an expert prompt engineer. Transform the user''s voice note into a well-structured AI prompt in English. Output must include: **Role** (ideal AI persona), **Context** (relevant background), **Task** (precise technical instruction), **Output format** (what the AI should return). Be technical and specific. Output ONLY the structured prompt.' WHERE id = 3 AND name = 'Code'",
+        "UPDATE transformation_profiles SET system_prompt = 'Sos un editor profesional. Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas — solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito, sin explicaciones ni comentarios.' WHERE id = 1",
+        [],
+    );
+    let _ = conn.execute(
+        "UPDATE transformation_profiles SET system_prompt = 'Sos un asistente de mensajería casual. Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final, sin explicaciones.' WHERE id = 2",
+        [],
+    );
+    let _ = conn.execute(
+        "UPDATE transformation_profiles SET system_prompt = 'You are a senior prompt engineer. Transform the voice note into a complete, ready-to-use AI prompt in English. Structure it exactly as follows — no extra text before or after:
+
+**Role:** [specific AI persona with expertise]
+**Context:** [background, constraints, and relevant details]
+**Task:** [precise, actionable instruction — what the AI must do]
+**Output:** [exact format, length, and structure expected]
+
+Be specific and technical. The output must be a prompt someone can paste directly into an AI tool.' WHERE id = 3",
         [],
     );
 
@@ -236,16 +252,18 @@ pub struct Profile {
     pub name: String,
     pub system_prompt: String,
     pub icon: Option<String>,
+    pub is_default: bool,
 }
 
 pub fn get_profiles(conn: &Connection) -> Result<Vec<Profile>> {
-    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon FROM transformation_profiles")?;
+    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon, is_default FROM transformation_profiles")?;
     let profile_iter = stmt.query_map([], |row| {
         Ok(Profile {
             id: row.get(0)?,
             name: row.get(1)?,
             system_prompt: row.get(2)?,
             icon: row.get(3)?,
+            is_default: row.get::<_, i64>(4)? != 0,
         })
     })?;
 
@@ -261,13 +279,14 @@ pub fn get_active_profile(conn: &Connection) -> Result<Option<Profile>> {
     let active_id_str = settings.get("active_profile_id").cloned().unwrap_or_else(|| "1".to_string());
     let active_id: i64 = active_id_str.parse().unwrap_or(1);
 
-    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon FROM transformation_profiles WHERE id = ?1")?;
+    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon, is_default FROM transformation_profiles WHERE id = ?1")?;
     let mut profile_iter = stmt.query_map(params![active_id], |row| {
         Ok(Profile {
             id: row.get(0)?,
             name: row.get(1)?,
             system_prompt: row.get(2)?,
             icon: row.get(3)?,
+            is_default: row.get::<_, i64>(4)? != 0,
         })
     })?;
 

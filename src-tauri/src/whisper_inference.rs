@@ -56,7 +56,6 @@ impl WhisperEngine {
         }
 
         let final_text = result.trim().to_string();
-        println!("WHISPER: Final transcription: \"{}\"", final_text);
         Ok(final_text)
     }
 }

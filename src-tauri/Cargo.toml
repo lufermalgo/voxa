@@ -5,6 +5,7 @@ description = "Privacy-first, cross-platform voice dictation"
 authors = ["lufermalgo"]
 edition = "2021"
 
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -27,10 +28,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # AI Bindings
 whisper-rs = { version = "0.13", features = ["metal"] }
-llama-cpp-2 = { version = "0.1.141", features = ["metal"] }
 
 # Utility
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.12", features = ["stream", "json", "blocking"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 tauri-plugin-clipboard-manager = "2"

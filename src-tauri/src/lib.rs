@@ -1,3 +1,7 @@
+// `objc` 0.2.x uses `cfg(cargo-clippy)` internally via its `sel_impl` macro.
+// It can't be upgraded because `cocoa` pins it to 0.2. Suppress the spurious warning.
+#![allow(unexpected_cfgs)]
+
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate objc;
@@ -338,10 +342,10 @@ fn setup_native_event_tap(app_handle: tauri::AppHandle) {
                     loop_source_ref,
                     native_ffi::kCFRunLoopCommonModes
                 );
-                println!("NATIVE TAP: Persistent FFI tap initialized (Mask: {:#b}).", mask);
+                println!("[INFO] Native event tap initialized.");
             }
         } else {
-            println!("NATIVE TAP ERROR: Failed to create FFI event tap. Check Accessibility permissions.");
+            eprintln!("[ERROR] Native event tap failed — check Accessibility permissions.");
         }
     }
 }
@@ -530,12 +534,10 @@ fn apply_all_shortcuts(app_handle: tauri::AppHandle) -> Result<(), String> {
     // --- NATIVE SHORTCUTS SYNC (Do this first) ---
     if let Some(mutex) = NATIVE_SHORTCUTS.get() {
         if let Ok(mut native_shortcuts) = mutex.lock() {
-            println!("DEBUG: Syncing shortcuts - PTT: '{}', HF: '{}', Paste: '{}', Cancel: '{}'", ptt_str, hf_str, paste_str, cancel_str);
             native_shortcuts.ptt = ptt_str.clone();
             native_shortcuts.hands_free = hf_str.clone();
             native_shortcuts.paste = paste_str.clone();
             native_shortcuts.cancel = cancel_str.clone();
-            println!("SHORTCUT: Native state synchronized.");
         }
     }
 
@@ -562,7 +564,6 @@ fn apply_all_shortcuts(app_handle: tauri::AppHandle) -> Result<(), String> {
 
     let register_and_handle = |shortcut_str: &str, name: &str, app_handle: &tauri::AppHandle| {
         if is_reserved(shortcut_str, name) {
-            println!("SHORTCUT: {} is reserved ({}), handled by native tap.", name, shortcut_str);
             return;
         }
 
@@ -633,16 +634,14 @@ fn apply_all_shortcuts(app_handle: tauri::AppHandle) -> Result<(), String> {
             });
 
             if let Err(e) = app_handle.global_shortcut().register(shortcut) {
-                println!("SHORTCUT ERROR: Failed to register {} with string '{}': {}", name, shortcut_str, e);
-            } else {
-                println!("SHORTCUT: {} ('{}') registered successfully.", name, shortcut_str);
+                eprintln!("[ERROR] Shortcut registration failed for {} ('{}'): {}", name, shortcut_str, e);
             }
         } else {
-            println!("SHORTCUT ERROR: Invalid accelerator: '{}'", shortcut_str);
+            eprintln!("[ERROR] Invalid shortcut accelerator: '{}'", shortcut_str);
         }
     };
 
-    println!("--- SHORTCUT MIGRATION START ---");
+    println!("[INFO] Shortcuts: PTT={} HF={} Paste={} Cancel={}", ptt_str, hf_str, paste_str, cancel_str);
     register_and_handle(&ptt_str, "push_to_talk", &app_handle);
     register_and_handle(&hf_str, "hands_free", &app_handle);
     register_and_handle(&paste_str, "paste", &app_handle);
@@ -669,7 +668,6 @@ async fn start_native_key_capture(app_handle: tauri::AppHandle) -> Result<String
         let tx_mutex = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
 
         app_handle.run_on_main_thread(move || {
-            println!("NATIVE TAP: Initializing tap on main thread...");
             
             use core_graphics::event::{
                 CGEventTapLocation, CGEventTapPlacement, CGEventTapOptions, 
@@ -738,13 +736,12 @@ async fn start_native_key_capture(app_handle: tauri::AppHandle) -> Result<String
                                 core_foundation::runloop::kCFRunLoopCommonModes
                             );
                         }
-                        println!("NATIVE TAP: Tap registered in main run loop (HID level).");
                     } else {
-                        println!("NATIVE TAP ERROR: Failed to create run loop source.");
+                        eprintln!("[ERROR] Native tap: failed to create run loop source.");
                     }
                 },
                 Err(e) => {
-                    println!("NATIVE TAP ERROR: Failed to create: {:?}", e);
+                    eprintln!("[ERROR] Native tap creation failed: {:?}", e);
                 }
             }
         }).map_err(|e| e.to_string())?;
@@ -779,7 +776,6 @@ extern "C" {
 #[tauri::command]
 fn check_accessibility_permissions() -> bool {
     let trusted = unsafe { AXIsProcessTrusted() };
-    println!("PERMISSIONS: Accessibility trusted: {}", trusted);
     trusted
 }
 
@@ -1012,7 +1008,7 @@ pub fn run() {
             // Store the tray icon in the app state to prevent it from being dropped
             app.manage(tray);
 
-            println!("SETUP: Native tray menu initialized.");
+            println!("[INFO] Voxa started.");
 
             app.manage(AudioEngine::new());
             
@@ -1062,13 +1058,13 @@ pub fn run() {
                                 let conn = db_state.conn.lock().unwrap();
                                 db::get_settings(&conn).unwrap_or_default().get("mic_id").cloned()
                             };
+                             let t_pipeline = std::time::Instant::now();
                              let samples = match audio::stop_stream(&audio_engine, mic_id) {
                                  Ok(s) => {
-                                     println!("PIPELINE: Stopped audio stream. Captured {} samples.", s.len());
                                      s
                                  },
                                  Err(e) => {
-                                     println!("PIPELINE ERROR: Failed to stop stream: {}", e);
+                                     eprintln!("[ERROR] Audio stream stop failed: {}", e);
                                      let _ = app_clone.emit("pipeline-error", e);
                                      let _ = app_clone.emit("pipeline-status", "idle");
                                      continue;
@@ -1084,15 +1080,16 @@ pub fn run() {
                                 let mut whisper_lock = engine_state.whisper.lock().unwrap();
                                 if whisper_lock.is_none() {
                                     let model_path = model_manager.get_whisper_path();
-                                    println!("PIPELINE: Loading Whisper model from {:?}", model_path);
                                     let _ = app_clone.emit("pipeline-status", "loading_whisper");
+                                    let t_load = std::time::Instant::now();
                                     match whisper_inference::WhisperEngine::new(&model_path) {
                                         Ok(e) => {
-                                            println!("PIPELINE: Whisper model loaded successfully.");
+                                            let size_mb = std::fs::metadata(&model_path).map(|m: std::fs::Metadata| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                                            println!("[MODEL] Whisper loaded  {:.0}MB  {:.2}s", size_mb, t_load.elapsed().as_secs_f64());
                                             *whisper_lock = Some(e);
                                         },
                                         Err(e) => {
-                                            println!("PIPELINE ERROR: Failed to load Whisper: {}", e);
+                                            eprintln!("[ERROR] Whisper load failed: {}", e);
                                             let _ = app_clone.emit("pipeline-error", e);
                                             let _ = app_clone.emit("pipeline-status", "idle");
                                             continue;
@@ -1104,21 +1101,26 @@ pub fn run() {
                                     let conn = db_state.conn.lock().unwrap();
                                     let lang = db::get_settings(&conn).unwrap_or_default().get("language").cloned().unwrap_or_else(|| "es".to_string());
                                     let dict = db::get_custom_dictionary(&conn).unwrap_or_default();
-                                    let prompt = if dict.is_empty() { 
-                                        "".to_string() 
-                                    } else { 
-                                        format!("Vocabulary: {}.", dict.join(", ")) 
+                                    let prompt = if dict.is_empty() {
+                                        "".to_string()
+                                    } else {
+                                        format!("Vocabulary: {}.", dict.join(", "))
                                     };
                                     (lang, prompt)
                                 };
-                                println!("PIPELINE: Calling whisper.transcribe...");
+                                let t_stt = std::time::Instant::now();
+                                let audio_secs = samples.len() as f64 / 16000.0;
                                 match whisper.transcribe(&samples, &language, &initial_prompt) {
                                     Ok(t) => {
-                                        println!("PIPELINE: Whisper transcription complete: \"{}\"", t);
+                                        let elapsed = t_stt.elapsed().as_secs_f64();
+                                        let words = t.split_whitespace().count();
+                                        println!("[STT] {:.1}s audio → {} words  ({:.2}s, RTF {:.2}x)",
+                                            audio_secs, words, elapsed, elapsed / audio_secs.max(0.01));
+                                        println!("[TRANSCRIPTION] {}", t);
                                         t
                                     },
                                     Err(e) => {
-                                        println!("PIPELINE ERROR: Transcription failed: {}", e);
+                                        eprintln!("[ERROR] Transcription failed: {}", e);
                                         let _ = app_clone.emit("pipeline-error", e);
                                         let _ = app_clone.emit("pipeline-status", "idle");
                                         continue;
@@ -1133,20 +1135,28 @@ pub fn run() {
                             let _ = app_clone.emit("pipeline-text-raw", &raw_text);
                             let _ = app_clone.emit("pipeline-status", "refining");
 
-                            println!("PIPELINE: Refining text with Llama...");
                             let refined_text = {
                                 let mut llama_lock = engine_state.llama.lock().unwrap();
                                 if llama_lock.is_none() {
                                     let model_path = model_manager.get_llama_path();
+                                    let server_path = model_manager.get_effective_llama_server();
                                     if !model_path.exists() {
-                                        println!("PIPELINE WARNING: Llama model not found, skipping refinement.");
+                                        println!("[WARN] Llama model not found, skipping refinement.");
+                                        raw_text.clone()
+                                    } else if server_path.is_none() {
+                                        println!("[WARN] llama-server not available, skipping refinement.");
                                         raw_text.clone()
                                     } else {
+                                        let server_path = server_path.unwrap();
+                                        println!("[LLM] Starting llama-server from {:?}", server_path);
                                         let _ = app_clone.emit("pipeline-status", "loading_llama");
-                                        match llama_inference::LlamaEngine::new(&model_path) {
+                                        let t_llm_load = std::time::Instant::now();
+                                        match llama_inference::LlamaEngine::new(&model_path, &server_path) {
                                             Ok(e) => {
+                                                let size_mb = std::fs::metadata(&model_path).map(|m: std::fs::Metadata| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                                                println!("[MODEL] LlamaEngine ready  {:.0}MB  {:.2}s", size_mb, t_llm_load.elapsed().as_secs_f64());
                                                 *llama_lock = Some(e);
-                                                let llama = llama_lock.as_ref().unwrap();
+                                                let llama = llama_lock.as_mut().unwrap();
                                                 let system_prompt = {
                                                     let conn = db_state.conn.lock().unwrap();
                                                     db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
@@ -1154,9 +1164,15 @@ pub fn run() {
                                                 if system_prompt.is_empty() {
                                                     raw_text.clone()
                                                 } else {
+                                                    let t_llm = std::time::Instant::now();
                                                     match llama.refine_text(&raw_text, &system_prompt) {
-                                                        Ok(t) => t,
+                                                        Ok(t) => {
+                                                            println!("[LLM] {:.2}s  in={} chars  out={} chars",
+                                                                t_llm.elapsed().as_secs_f64(), raw_text.len(), t.len());
+                                                            t
+                                                        },
                                                         Err(e) => {
+                                                            eprintln!("[ERROR] Refinement failed: {}", e);
                                                             let _ = app_clone.emit("pipeline-error", format!("Refinement Error: {}", e));
                                                             raw_text.clone()
                                                         }
@@ -1164,14 +1180,14 @@ pub fn run() {
                                                 }
                                             },
                                             Err(e) => {
-                                                println!("PIPELINE ERROR: Failed to load Llama: {}. Falling back to raw text.", e);
+                                                eprintln!("[ERROR] LlamaEngine init failed: {}", e);
                                                 let _ = app_clone.emit("pipeline-error", format!("Llama Loading Error: {}", e));
                                                 raw_text.clone()
                                             }
                                         }
                                     }
                                 } else {
-                                    let llama = llama_lock.as_ref().unwrap();
+                                    let llama = llama_lock.as_mut().unwrap();
                                     let system_prompt = {
                                         let conn = db_state.conn.lock().unwrap();
                                         db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
@@ -1179,9 +1195,15 @@ pub fn run() {
                                     if system_prompt.is_empty() {
                                         raw_text.clone()
                                     } else {
+                                        let t_llm = std::time::Instant::now();
                                         match llama.refine_text(&raw_text, &system_prompt) {
-                                            Ok(t) => t,
+                                            Ok(t) => {
+                                                println!("[LLM] {:.2}s  in={} chars  out={} chars",
+                                                    t_llm.elapsed().as_secs_f64(), raw_text.len(), t.len());
+                                                t
+                                            },
                                             Err(e) => {
+                                                eprintln!("[ERROR] Refinement failed: {}", e);
                                                 let _ = app_clone.emit("pipeline-error", format!("Refinement Error: {}", e));
                                                 raw_text.clone()
                                             }
@@ -1190,24 +1212,23 @@ pub fn run() {
                                 }
                             };
                             
-                            println!("Refined Final Output: \"{}\"", refined_text);
+                            println!("[REFINED] {}", refined_text);
+                            println!("[PIPELINE] Total: {:.2}s", t_pipeline.elapsed().as_secs_f64());
 
                             {
                                 let conn = db_state.conn.lock().unwrap();
                                 let _ = db::insert_transcript(&conn, &refined_text, &raw_text);
                             }
 
-                            println!("PIPELINE: Copying result to clipboard and simulating paste.");
                             use tauri_plugin_clipboard_manager::ClipboardExt;
                             app_clone.clipboard().write_text(refined_text.clone()).unwrap_or_else(|e| {
-                                println!("PIPELINE ERROR: Clipboard Error: {}", e);
+                                eprintln!("[ERROR] Clipboard write failed: {}", e);
                                 let _ = app_clone.emit("pipeline-error", format!("Clipboard Error: {}", e));
                             });
                             
                             simulate_paste();
 
                             let _ = app_clone.emit("pipeline-results", &refined_text);
-                            println!("PIPELINE: DONE. Resetting status to idle.");
                             let _ = app_clone.emit("pipeline-status", "idle");
                         }
                         DictationEvent::CancelRecording => {
@@ -1229,7 +1250,7 @@ pub fn run() {
             // Check permissions first
             let is_trusted = unsafe { AXIsProcessTrusted() };
             if !is_trusted {
-                println!("WARNING: Accessibility permissions NOT granted. Key capture will NOT work.");
+                eprintln!("[WARN] Accessibility permissions not granted — key capture disabled.");
                 println!("Go to System Settings > Privacy & Security > Accessibility and add the terminal or app.");
             }
             
