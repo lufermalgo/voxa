@@ -16,7 +16,7 @@ mod window_utils;
 use crate::audio::AudioEngine;
 use db::{Transcript, DbState};
 use tauri::{Manager, State, AppHandle, Emitter};
-use std::sync::{Mutex, mpsc, atomic::AtomicBool, OnceLock};
+use std::sync::{Arc, Mutex, mpsc, atomic::AtomicBool, OnceLock};
 use rusqlite::params;
 use tauri::menu::Menu;
 use tauri::tray::TrayIconBuilder;
@@ -352,12 +352,62 @@ fn setup_native_event_tap(app_handle: tauri::AppHandle) {
 
 
 
+/// Returns the PID of the current frontmost application, excluding Voxa itself.
+/// Uses NSWorkspace directly — no osascript, no name-based lookup, works for any app
+/// including Electron-based apps (VS Code, Cursor, Slack, etc.).
+#[cfg(target_os = "macos")]
+fn get_frontmost_app_pid() -> Option<i32> {
+    unsafe {
+        let workspace: cocoa::base::id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let frontmost: cocoa::base::id = msg_send![workspace, frontmostApplication];
+        if frontmost.is_null() { return None; }
+        let pid: i32 = msg_send![frontmost, processIdentifier];
+        // Exclude our own process
+        let own_pid = std::process::id() as i32;
+        if pid == own_pid { return None; }
+        Some(pid)
+    }
+}
+
+/// Re-activates an app by PID using NSRunningApplication.
+/// More reliable than name-based activation and works for Electron, JVM apps, etc.
+#[cfg(target_os = "macos")]
+fn activate_app_by_pid(pid: i32) {
+    if pid <= 0 { return; }
+    unsafe {
+        let running_app: cocoa::base::id = msg_send![
+            class!(NSRunningApplication),
+            runningApplicationWithProcessIdentifier: pid
+        ];
+        if !running_app.is_null() {
+            // NSApplicationActivateIgnoringOtherApps | NSApplicationActivateAllWindows = 3
+            let _: objc::runtime::BOOL = msg_send![running_app, activateWithOptions: 3u64];
+        }
+    }
+}
+
+/// Sends Cmd+V to the currently active application via CGEvent.
+/// Faster and more reliable than osascript for paste.
 #[cfg(target_os = "macos")]
 fn simulate_paste() {
-    let _ = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"System Events\" to keystroke \"v\" using command down")
-        .spawn();
+    use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    if let Ok(source) = CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
+        let key_v: CGKeyCode = 9; // kVK_ANSI_V
+        if let Ok(key_down) = CGEvent::new_keyboard_event(source.clone(), key_v, true) {
+            key_down.set_flags(CGEventFlags::CGEventFlagCommand);
+            key_down.post(core_graphics::event::CGEventTapLocation::HID);
+        }
+        if let Ok(key_up) = CGEvent::new_keyboard_event(source, key_v, false) {
+            key_up.set_flags(CGEventFlags::CGEventFlagCommand);
+            key_up.post(core_graphics::event::CGEventTapLocation::HID);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn simulate_paste() {
+    // Placeholder for non-macOS platforms
 }
 
 // Vibrancy for the Pill and Settings is managed via Tauri's window configuration.
@@ -378,6 +428,7 @@ pub enum DictationEvent {
 
 pub struct DictationSender(pub Mutex<mpsc::Sender<DictationEvent>>);
 pub struct RecordingState(pub AtomicBool);
+pub struct FrontmostApp(pub Mutex<i32>); // PID of the app that was active when recording started
 
 pub struct EngineState {
     pub whisper: Mutex<Option<whisper_inference::WhisperEngine>>,
@@ -443,6 +494,63 @@ async fn remove_from_dictionary(state: State<'_, DbState>, word: String) -> Resu
     db::remove_from_dictionary(&conn, &word).map_err(|e| e.to_string())
 }
 
+/// Updates a transcript's corrected text and automatically learns new words
+/// by comparing the original Whisper output (raw_content) with the user's correction.
+/// Words that appear in the correction but not in the raw transcript are added
+/// to the custom dictionary so Whisper recognizes them in future recordings.
+#[tauri::command]
+async fn update_transcript(
+    app: tauri::AppHandle,
+    state: State<'_, DbState>,
+    id: i64,
+    new_content: String,
+    raw_content: String,
+) -> Result<Vec<String>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::update_transcript_content(&conn, id, &new_content).map_err(|e| e.to_string())?;
+
+    let learned = extract_new_words(&raw_content, &new_content);
+    for word in &learned {
+        let _ = conn.execute("INSERT OR IGNORE INTO custom_dict (word) VALUES (?1)", params![word]);
+    }
+
+    if !learned.is_empty() {
+        let _ = app.emit("dictionary-updated", &learned);
+        println!("[LEARN] Added to dictionary: {}", learned.join(", "));
+    }
+
+    Ok(learned)
+}
+
+/// Extracts words from `corrected` that don't appear in `raw` (case-insensitive).
+/// Filters out short/common words to avoid polluting the dictionary with noise.
+fn extract_new_words(raw: &str, corrected: &str) -> Vec<String> {
+    // Common stopwords to skip — no value in the dictionary
+    const SKIP: &[&str] = &[
+        "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "is", "it", "i", "my", "me", "we", "you", "he", "she",
+        "they", "this", "that", "was", "are", "be", "as", "by", "from", "un",
+        "el", "la", "los", "las", "de", "del", "en", "y", "o", "que", "se",
+        "no", "si", "su", "al", "es", "por", "con", "le", "lo", "una", "pero",
+    ];
+
+    let raw_words: std::collections::HashSet<String> = raw
+        .split(|c: char| !c.is_alphanumeric() && c != '.' && c != '+' && c != '#' && c != '-')
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect();
+
+    corrected
+        .split(|c: char| !c.is_alphanumeric() && c != '.' && c != '+' && c != '#' && c != '-')
+        .filter(|w| w.len() >= 2)
+        .filter(|w| !SKIP.contains(&w.to_lowercase().as_str()))
+        .filter(|w| !raw_words.contains(&w.to_lowercase()))
+        .map(|w| w.to_string())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 #[tauri::command]
 fn update_profile(app: tauri::AppHandle, state: tauri::State<DbState>, id: i64, name: String, prompt: String, icon: Option<String>) -> Result<(), String> {
     let conn = state.conn.lock().unwrap();
@@ -487,6 +595,37 @@ async fn stop_recording(app: tauri::AppHandle, engine: State<'_, AudioEngine>, d
     let samples = audio::stop_stream(&engine, mic_id)?;
     app.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
     Ok(samples)
+}
+
+#[tauri::command]
+fn set_window_interactive(app: tauri::AppHandle, interactive: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_ignore_cursor_events(!interactive).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String> {
+    // Re-activate the target app immediately on button click so the user
+    // never sees focus leave their window — paste will land in the right place.
+    #[cfg(target_os = "macos")]
+    {
+        let pid = *app.state::<FrontmostApp>().0.lock().unwrap();
+        activate_app_by_pid(pid);
+    }
+    let sender = app.state::<DictationSender>();
+    let _ = sender.0.lock().unwrap().send(DictationEvent::StopRecording);
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_recording(app: tauri::AppHandle, engine: State<'_, AudioEngine>) -> Result<(), String> {
+    let sender = app.state::<DictationSender>();
+    let _ = sender.0.lock().unwrap().send(DictationEvent::CancelRecording);
+    let _ = audio::stop_stream(&engine, None);
+    app.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -760,6 +899,13 @@ async fn start_native_key_capture(app_handle: tauri::AppHandle) -> Result<String
 fn show_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.show();
+        // With NSApplicationActivationPolicyAccessory, the app doesn't auto-activate.
+        // We must explicitly activate so Settings can receive keyboard input.
+        #[cfg(target_os = "macos")]
+        unsafe {
+            let ns_app: cocoa::base::id = msg_send![class!(NSApplication), sharedApplication];
+            let () = msg_send![ns_app, activateIgnoringOtherApps: true as objc::runtime::BOOL];
+        }
         let _ = window.set_focus();
         if let Some(t) = tab {
             let _ = window.emit("show-tab", t);
@@ -839,21 +985,33 @@ pub fn run() {
                     #[cfg(target_os = "macos")]
                     {
                         use cocoa::appkit::NSWindowCollectionBehavior;
-                        
-                        // We use ns_window() which is available because we have "macos-private-api" feature enabled
+
                         if let Ok(ns_window) = window.ns_window() {
                             unsafe {
-                                let collection_behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces 
-                                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary 
+                                let ns_win_id = ns_window as cocoa::base::id;
+
+                                let collection_behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
+                                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
                                     | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
-                                
-                                let () = msg_send![ns_window as cocoa::base::id, setCollectionBehavior: collection_behavior];
+                                let () = msg_send![ns_win_id, setCollectionBehavior: collection_behavior];
                             }
+                        }
+
+                        // NSApplicationActivationPolicyAccessory (1): the app has no Dock icon,
+                        // does not appear in the App Switcher, and clicking its windows does NOT
+                        // activate the application. This is the standard macOS pattern for
+                        // overlay/agent apps (Alfred, Raycast, Bartender, etc.).
+                        // show_settings re-activates when the user intentionally opens Settings.
+                        unsafe {
+                            let ns_app: cocoa::base::id = msg_send![class!(NSApplication), sharedApplication];
+                            let () = msg_send![ns_app, setActivationPolicy: 1i64]; // Accessory
                         }
 
                         // No native vibrancy here, use CSS
                     }
                 }
+                // Start in idle: window is invisible to mouse clicks
+                let _ = window.set_ignore_cursor_events(true);
                 let _ = window.show();
             }
 
@@ -1024,7 +1182,38 @@ pub fn run() {
             let (tx, rx) = mpsc::channel::<DictationEvent>();
             app.manage(DictationSender(Mutex::new(tx)));
             app.manage(RecordingState(AtomicBool::new(false)));
+            app.manage(FrontmostApp(Mutex::new(0i32)));
             
+            // Pre-warm LlamaEngine in the background so the first dictation is fast.
+            // IMPORTANT: build the engine OUTSIDE the mutex so we never block the pipeline.
+            let app_warmup = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let model_manager = app_warmup.state::<models::ModelManager>();
+                let engine_state = app_warmup.state::<EngineState>();
+                let model_path = model_manager.get_llama_path();
+                if !model_path.exists() { return; }
+                let server_path = match model_manager.get_effective_llama_server() {
+                    Some(p) => p,
+                    None => return,
+                };
+                // Check under lock, then release immediately — never hold lock during startup
+                {
+                    let lock = engine_state.llama.lock().unwrap();
+                    if lock.is_some() { return; }
+                } // lock drops here
+                println!("[WARMUP] Pre-loading LlamaEngine from {:?}", model_path);
+                match llama_inference::LlamaEngine::new(&model_path, &server_path) {
+                    Ok(e) => {
+                        let mut lock = engine_state.llama.lock().unwrap();
+                        if lock.is_none() { *lock = Some(e); }
+                        let size_mb = std::fs::metadata(&model_path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                        println!("[WARMUP] LlamaEngine ready — {:.0}MB", size_mb);
+                    }
+                    Err(e) => eprintln!("[WARMUP] LlamaEngine failed: {}", e),
+                }
+            });
+
             let app_clone = app.handle().clone();
             std::thread::spawn(move || {
                 for event in rx {
@@ -1038,7 +1227,34 @@ pub fn run() {
                                 };
                                 match audio::setup_stream(&audio_engine, mic_id) {
                                     Ok(_) => {
+                                        // Save the app that was active before recording starts
+                                        #[cfg(target_os = "macos")]
+                                        if let Some(pid) = get_frontmost_app_pid() {
+                                            *app_clone.state::<FrontmostApp>().0.lock().unwrap() = pid;
+                                        }
+                                        app_clone.state::<RecordingState>().0.store(true, std::sync::atomic::Ordering::SeqCst);
+                                        if let Some(win) = app_clone.get_webview_window("main") {
+                                            let _ = win.set_ignore_cursor_events(false);
+                                        }
                                         let _ = app_clone.emit("pipeline-status", "recording");
+
+                                        // Spawn level-polling thread: reads mic RMS at ~30fps and
+                                        // emits "audio-level" events to drive the waveform animation.
+                                        let level_app = app_clone.clone();
+                                        let level_atomic = Arc::clone(&audio_engine.current_level);
+                                        std::thread::spawn(move || {
+                                            loop {
+                                                if !level_app.state::<RecordingState>().0.load(std::sync::atomic::Ordering::SeqCst) {
+                                                    let _ = level_app.emit("audio-level", 0.0f32);
+                                                    break;
+                                                }
+                                                let rms = f32::from_bits(level_atomic.load(std::sync::atomic::Ordering::Relaxed));
+                                                // Normalize: typical speech RMS ~0.02–0.15 → map to 0–1
+                                                let normalized = (rms / 0.15).min(1.0);
+                                                let _ = level_app.emit("audio-level", normalized);
+                                                std::thread::sleep(std::time::Duration::from_millis(33)); // ~30fps
+                                            }
+                                        });
                                     }
                                     Err(e) => {
                                         let _ = app_clone.emit("pipeline-error", format!("Audio Error: {}", e));
@@ -1071,9 +1287,25 @@ pub fn run() {
                                  }
                              };
 
-                            if samples.is_empty() { 
+                            app_clone.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+                            if let Some(win) = app_clone.get_webview_window("main") {
+                                let _ = win.set_ignore_cursor_events(true);
+                            }
+
+                            if samples.is_empty() {
                                 let _ = app_clone.emit("pipeline-status", "idle");
-                                continue; 
+                                continue;
+                            }
+
+                            // Skip silence: Whisper hallucinates on completely silent audio.
+                            // Use peak amplitude, not RMS — RMS averages silence in the recording,
+                            // which drags it below threshold even when the user spoke briefly.
+                            // A peak > 0.05 means a real utterance happened somewhere in the buffer.
+                            let peak = samples.iter().cloned().fold(0.0f32, f32::max);
+                            if peak < 0.05 {
+                                println!("[STT] Skipped — silence detected (peak {:.4})", peak);
+                                let _ = app_clone.emit("pipeline-status", "idle");
+                                continue;
                             }
 
                             let raw_text = {
@@ -1188,10 +1420,15 @@ pub fn run() {
                                     }
                                 } else {
                                     let llama = llama_lock.as_mut().unwrap();
-                                    let system_prompt = {
+                                    let (system_prompt, profile_name) = {
                                         let conn = db_state.conn.lock().unwrap();
-                                        db::get_active_profile(&conn).unwrap_or_default().map(|p| p.system_prompt).unwrap_or_default()
+                                        let p = db::get_active_profile(&conn).unwrap_or_default();
+                                        let name = p.as_ref().map(|x| x.name.clone()).unwrap_or_default();
+                                        let prompt = p.map(|x| x.system_prompt).unwrap_or_default();
+                                        (prompt, name)
                                     };
+                                    println!("[LLM] Profile: '{}' | Prompt[:80]: {}",
+                                        profile_name, &system_prompt.chars().take(80).collect::<String>());
                                     if system_prompt.is_empty() {
                                         raw_text.clone()
                                     } else {
@@ -1226,13 +1463,25 @@ pub fn run() {
                                 let _ = app_clone.emit("pipeline-error", format!("Clipboard Error: {}", e));
                             });
                             
+                            #[cfg(target_os = "macos")]
+                            {
+                                let target_pid = *app_clone.state::<FrontmostApp>().0.lock().unwrap();
+                                activate_app_by_pid(target_pid);
+                                // Small delay to let the app become active before sending Cmd+V
+                                std::thread::sleep(std::time::Duration::from_millis(80));
+                                simulate_paste();
+                            }
+                            #[cfg(not(target_os = "macos"))]
                             simulate_paste();
 
                             let _ = app_clone.emit("pipeline-results", &refined_text);
                             let _ = app_clone.emit("pipeline-status", "idle");
                         }
                         DictationEvent::CancelRecording => {
-                            let _ = app_clone.emit("pipeline-status", "idle");
+                            app_clone.state::<RecordingState>().0.store(false, std::sync::atomic::Ordering::SeqCst);
+                            if let Some(win) = app_clone.get_webview_window("main") {
+                                let _ = win.set_ignore_cursor_events(true);
+                            }
                             let audio_engine = app_clone.state::<AudioEngine>();
                             let db_state = app_clone.state::<DbState>();
                             let mic_id = {
@@ -1240,7 +1489,7 @@ pub fn run() {
                                 db::get_settings(&conn).unwrap_or_default().get("mic_id").cloned()
                             };
                             let _ = audio::stop_stream(&audio_engine, mic_id);
-                            // We do nothing with the samples, just discard
+                            let _ = app_clone.emit("pipeline-status", "idle");
                         }
                     }
                 }
@@ -1270,6 +1519,9 @@ pub fn run() {
             update_setting,
             get_audio_devices,
             start_recording,
+            cancel_recording,
+            stop_and_transcribe,
+            set_window_interactive,
             stop_recording,
             apply_all_shortcuts,
             unregister_all_shortcuts,
@@ -1278,6 +1530,7 @@ pub fn run() {
             get_custom_dictionary,
             add_to_dictionary,
             remove_from_dictionary,
+            update_transcript,
             update_profile,
             create_profile,
             delete_profile,

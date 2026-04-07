@@ -23,7 +23,8 @@
         "alwaysOnTop": true,
         "visible": false,
         "resizable": false,
-        "fullscreen": false
+        "fullscreen": false,
+        "acceptFirstMouse": true
       },
       {
         "label": "settings",

@@ -142,38 +142,38 @@ fn init_tables(conn: &Connection) -> Result<()> {
 
     conn.execute(
         "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES
-        (1, 'Elegante', 'Sos un editor profesional. Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas — solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito, sin explicaciones ni comentarios.', 'star', 1),
-        (2, 'Informal', 'Sos un asistente de mensajería casual. Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final, sin explicaciones.', 'forum', 1),
-        (3, 'Code', 'You are a senior prompt engineer. Transform the voice note into a complete, ready-to-use AI prompt in English. Structure it exactly as follows — no extra text before or after:
+        (1, 'Elegante', 'Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas, solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito.', 'star', 1),
+        (2, 'Informal', 'Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final.', 'forum', 1),
+        (3, 'Code', 'You are a senior prompt engineer. Transform the voice note into a single, complete, ready-to-use AI prompt written in English. Use this structure — no extra text, no JSON, no code blocks, no duplicate versions:
 
-**Role:** [specific AI persona with expertise]
-**Context:** [background, constraints, and relevant details]
-**Task:** [precise, actionable instruction — what the AI must do]
-**Output:** [exact format, length, and structure expected]
+**Role:** [specific expert persona with relevant domain]
+**Context:** [1-2 sentences of relevant background and constraints]
+**Task:** [precise, actionable instruction — exactly what the AI must do]
+**Expected output:** [describe the format and length of the desired response in plain text]
 
-Be specific and technical. The output must be a prompt someone can paste directly into an AI tool.', 'code', 1),
+Output ONLY the prompt. Nothing before, nothing after.', 'code', 1),
         (4, 'Custom', 'Instrucciones personalizadas: escribí acá cómo querés que el LLM procese tu texto.', 'tune', 1)",
         [],
     )?;
 
     // Forced update for existing installations — always overwrites to latest prompt version
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'Sos un editor profesional. Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas — solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito, sin explicaciones ni comentarios.' WHERE id = 1",
+        "UPDATE transformation_profiles SET system_prompt = 'Reescribí el texto con gramática, ortografía y puntuación perfectas. Usá vocabulario formal y oraciones bien estructuradas. No agregues ni elimines ideas, solo pulí la expresión. Devolvé ÚNICAMENTE el texto reescrito.' WHERE id = 1",
         [],
     );
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'Sos un asistente de mensajería casual. Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final, sin explicaciones.' WHERE id = 2",
+        "UPDATE transformation_profiles SET system_prompt = 'Reescribí el texto como un mensaje natural y directo para chat o Slack. Eliminá muletillas y repeticiones, corregí errores obvios, pero mantené el tono relajado y la voz original. Devolvé ÚNICAMENTE el mensaje final.' WHERE id = 2",
         [],
     );
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'You are a senior prompt engineer. Transform the voice note into a complete, ready-to-use AI prompt in English. Structure it exactly as follows — no extra text before or after:
+        "UPDATE transformation_profiles SET system_prompt = 'You are a senior prompt engineer. Transform the voice note into a single, complete, ready-to-use AI prompt written in English. Use this structure — no extra text, no JSON, no code blocks, no duplicate versions:
 
-**Role:** [specific AI persona with expertise]
-**Context:** [background, constraints, and relevant details]
-**Task:** [precise, actionable instruction — what the AI must do]
-**Output:** [exact format, length, and structure expected]
+**Role:** [specific expert persona with relevant domain]
+**Context:** [1-2 sentences of relevant background and constraints]
+**Task:** [precise, actionable instruction — exactly what the AI must do]
+**Expected output:** [describe the format and length of the desired response in plain text]
 
-Be specific and technical. The output must be a prompt someone can paste directly into an AI tool.' WHERE id = 3",
+Output ONLY the prompt. Nothing before, nothing after.' WHERE id = 3",
         [],
     );
 
@@ -218,6 +218,14 @@ pub fn insert_transcript(conn: &Connection, content: &str, raw_content: &str) ->
         params![content, raw_content],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn update_transcript_content(conn: &Connection, id: i64, new_content: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE transcripts SET content = ?1 WHERE id = ?2",
+        params![new_content, id],
+    )?;
+    Ok(())
 }
 
 pub fn delete_transcript(conn: &Connection, id: i64) -> Result<()> {

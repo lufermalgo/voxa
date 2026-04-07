@@ -8,6 +8,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "Voxa"
+path = "src/main.rs"
+
 [lib]
 name = "voxa_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

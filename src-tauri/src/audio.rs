@@ -1,5 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 pub struct SendStream(pub cpal::Stream);
 unsafe impl Send for SendStream {}
@@ -11,6 +12,10 @@ pub struct AudioState {
 
 pub struct AudioEngine {
     pub state: Mutex<AudioState>,
+    /// Current RMS level of the mic input (f32 bits stored as u32).
+    /// Updated by the audio callback on every chunk (~10ms). Read by the
+    /// level-polling thread to drive the real-time waveform animation.
+    pub current_level: Arc<AtomicU32>,
 }
 
 impl AudioEngine {
@@ -20,6 +25,7 @@ impl AudioEngine {
                 stream: None,
                 buffer: Arc::new(Mutex::new(Vec::new())),
             }),
+            current_level: Arc::new(AtomicU32::new(0)),
         }
     }
 }
@@ -86,28 +92,45 @@ pub fn setup_stream(engine: &AudioEngine, mic_id: Option<String>) -> Result<(), 
         b
     };
 
+    let level_atomic = Arc::clone(&engine.current_level);
+
     let stream = match config.sample_format() {
-        cpal::SampleFormat::F32 => device.build_input_stream(
-            &config.into(),
-            move |data: &[f32], _: &_| {
-                if let Ok(mut b) = buffer.lock() {
-                    b.extend_from_slice(data);
-                }
-            },
-            |err| eprintln!("Stream error: {}", err),
-            None,
-        ),
-        cpal::SampleFormat::I16 => device.build_input_stream(
-            &config.into(),
-            move |data: &[i16], _: &_| {
-                if let Ok(mut b) = buffer.lock() {
+        cpal::SampleFormat::F32 => {
+            let level = Arc::clone(&level_atomic);
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[f32], _: &_| {
+                    if let Ok(mut b) = buffer.lock() {
+                        b.extend_from_slice(data);
+                    }
+                    // Compute RMS of this chunk and publish for the animation thread
+                    if !data.is_empty() {
+                        let rms = (data.iter().map(|s| s * s).sum::<f32>() / data.len() as f32).sqrt();
+                        level.store(rms.to_bits(), Ordering::Relaxed);
+                    }
+                },
+                |err| eprintln!("Stream error: {}", err),
+                None,
+            )
+        },
+        cpal::SampleFormat::I16 => {
+            let level = Arc::clone(&level_atomic);
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[i16], _: &_| {
                     let f32_data: Vec<f32> = data.iter().map(|&x| x as f32 / i16::MAX as f32).collect();
-                    b.extend_from_slice(&f32_data);
-                }
-            },
-            |err| eprintln!("Stream error: {}", err),
-            None,
-        ),
+                    if let Ok(mut b) = buffer.lock() {
+                        b.extend_from_slice(&f32_data);
+                    }
+                    if !f32_data.is_empty() {
+                        let rms = (f32_data.iter().map(|s| s * s).sum::<f32>() / f32_data.len() as f32).sqrt();
+                        level.store(rms.to_bits(), Ordering::Relaxed);
+                    }
+                },
+                |err| eprintln!("Stream error: {}", err),
+                None,
+            )
+        },
         _ => return Err(format!("Unsupported sample format: {:?}", config.sample_format())),
     }.map_err(|e| e.to_string())?;
 
