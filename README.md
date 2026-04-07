@@ -1,7 +1,7 @@
 # Voxa
 
 <div align="center">
-  <img src="./docs/images/voxa_hero.png" width="100%" alt="Voxa Hero Interface" />
+  <img src="./public/voxa_logo.png" width="100%" alt="Voxa Voice Interface" />
   
   <p align="center">
     <strong>The Silent Conductor of Your Digital Workflow.</strong><br />
@@ -26,8 +26,11 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 ## ✨ Features
 
 - **Ultra-Compact Pill**: A floating, Obsidian Glass interface that stays 15px from your Dock, providing visual feedback without stealing focus.
+- **VAD-Reactive Animation**: The recording pill bars respond in real time to your microphone's RMS level — silence dampens, speech drives the wave.
 - **System-Wide Injection**: Works in every app. Just talk, and let Voxa handle the `Cmd+V`.
-- **Local Intelligence**: Powered by `Whisper.cpp` (transcription) and `Llama.cpp` (post-processing) — your voice never leaves your machine.
+- **Local Intelligence**: Powered by `whisper-rs` (transcription) and `llama-server` (post-processing via `llama.cpp`) — your voice never leaves your machine.
+- **Focus Preservation**: Uses `NSWorkspace` + PID-based `activateWithOptions` to return focus to the exact app you were typing in, even Electron/JVM targets.
+- **Transcript Editing**: Correct any transcription after the fact; Voxa extracts new words automatically to improve future recognition.
 - **Obsidian Tray Menu**: A custom, high-blur glassmorphism menu for quick profile and language switching.
 - **Flicker-Free Experience**: Precision window management handled by the Rust backend for instantaneous positioning.
 
@@ -37,8 +40,8 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 - **Frontend**: [React](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/)
 - **Styling**: Vanilla CSS (High-Performance Glassmorphism)
 - **Engines**: 
-  - `faster-whisper` (Local STT)
-  - `Ollama` / `Llama.cpp` (Intelligent Post-processing)
+  - `whisper-rs` (Local STT via `whisper.cpp`)
+  - `llama-server` HTTP API (Intelligent Post-processing via `llama.cpp`)
 
 ## 🚀 Getting Started
 
@@ -74,6 +77,7 @@ Voxa uses a decoupled **MPSC (Multi-Producer Single-Consumer)** architecture to 
 
 For deep dives into specific technical implementations, see:
 - [macOS Native Event Tap & Shortcut Architecture](docs/architecture/shortcuts-native-tap.md)
+- [VAD-Reactive Animation Architecture](docs/architecture/vad-animation.md)
 
 ---
 
