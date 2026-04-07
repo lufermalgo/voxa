@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an improvement for Voxa
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem first, not only the solution you have in mind.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      placeholder: What user pain or workflow limitation does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: What do you think should change?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: What other approaches did you consider?
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected impact
+      placeholder: Why would this make Voxa better?
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and risks
+      placeholder: What parts of the product or architecture could this affect?

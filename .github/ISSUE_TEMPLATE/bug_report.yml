@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible problem in Voxa
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please be as specific and reproducible as possible.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Short description of the problem
+    validations:
+      required: true
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior
+      placeholder: What is happening right now?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      placeholder: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. Press ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - macOS version:
+        - Device:
+        - Voxa version / commit:
+        - Installation method:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots / recordings
+      placeholder: Paste logs or add screenshots if relevant
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      placeholder: Anything else that helps reproduce or understand the issue

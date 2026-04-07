@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Architecture and contributor notes
+    url: https://github.com/lufermalgo/voxa/blob/main/ROADMAP.md
+    about: Read the roadmap before opening broad feature requests.
