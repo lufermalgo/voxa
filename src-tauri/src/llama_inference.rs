@@ -72,21 +72,10 @@ impl LlamaEngine {
             return Ok(text.to_string());
         }
 
-        // Wrap the user's profile instruction with an English meta-instruction.
-        // Qwen2.5 follows English-language meta-instructions reliably regardless of the
-        // user's instruction language. This allows users to write profile instructions
-        // in any language (Spanish, English, etc.) without translation issues.
-        let wrapped_system = format!(
-            "You are a voice dictation post-processor. Your behavior rules (MANDATORY):\
-            \n1. NEVER translate the text — respond in the EXACT same language as the input.\
-            \n2. Apply the following instruction precisely:\n\n{}",
-            system_prompt
-        );
-
         // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models
         let prompt = format!(
             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-            wrapped_system, text
+            system_prompt, text
         );
 
         let body = serde_json::json!({
