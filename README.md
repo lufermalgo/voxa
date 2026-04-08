@@ -29,14 +29,37 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 
 ## ✨ Features
 
-- **Ultra-Compact Pill**: A floating, Obsidian Glass interface that stays 15px from your Dock, providing visual feedback without stealing focus.
-- **VAD-Reactive Animation**: The recording pill bars respond in real time to your microphone's RMS level — silence dampens, speech drives the wave.
-- **System-Wide Injection**: Works in every app. Just talk, and let Voxa handle the `Cmd+V`.
-- **Local Intelligence**: Powered by `whisper-rs` (transcription) and `llama-server` (post-processing via `llama.cpp`) — your voice never leaves your machine.
-- **Focus Preservation**: Uses `NSWorkspace` + PID-based `activateWithOptions` to return focus to the exact app you were typing in, even Electron/JVM targets.
-- **Transcript Editing**: Correct any transcription after the fact; Voxa extracts new words automatically to improve future recognition.
-- **Obsidian Tray Menu**: A custom, high-blur glassmorphism menu for quick profile and language switching.
-- **Flicker-Free Experience**: Precision window management handled by the Rust backend for instantaneous positioning.
+### 🎙 Dictation
+- **System-Wide Injection**: Works in every app — browser, editor, terminal, Slack. Just talk, Voxa handles the `Cmd+V`.
+- **VAD-Reactive Animation**: The recording pill responds in real time to your microphone level — silence dampens, speech drives the wave.
+- **Focus Preservation**: Returns focus to the exact app you were typing in after injection, including Electron and JVM targets (VS Code, IntelliJ, Cursor).
+- **Ultra-Compact Pill**: A floating Obsidian Glass interface that stays 15px from your Dock — always visible, never in the way.
+
+### 🧠 Transformation Profiles
+
+The most powerful feature of Voxa. Instead of just transcribing, Voxa passes your voice through a local LLM that reshapes the output according to a **profile** — without sending anything to the cloud.
+
+Four built-in profiles, each purpose-built:
+
+| Profile | What it does |
+|---------|--------------|
+| **Elegant** | Rewrites with perfect grammar and formal vocabulary. Keeps your ideas, elevates the expression. |
+| **Informal** | Cleans up filler words and repetitions, keeps your natural tone. Great for Slack and chat. |
+| **Code** | Acts as a prompt engineer. Transforms your voice note into a structured, ready-to-use AI prompt (Role / Context / Task / Expected output). |
+| **Custom** | Write your own system prompt. Full control over how the LLM processes your voice. |
+
+You can create unlimited custom profiles and switch between them instantly from the tray menu.
+
+### 📋 Transcript History
+
+Every dictation is stored locally in SQLite. From the history panel you can:
+- Review both the **raw transcription** and the **LLM-refined version** side by side.
+- **Edit** any transcript after the fact to correct errors.
+- **Delete** individual entries or clear the full history.
+
+### 📖 Custom Dictionary
+
+When you correct a transcript, Voxa automatically extracts the new words and adds them to your personal dictionary. This improves Whisper's recognition for domain-specific terms, names, and jargon over time. You can also add or remove words manually from Settings.
 
 ## 🛠 Tech Stack
 
