@@ -137,9 +137,28 @@ pub fn run() {
 
             pipeline::start_pipeline(app.handle().clone(), rx);
 
-            extern "C" { fn AXIsProcessTrusted() -> bool; }
-            if !unsafe { AXIsProcessTrusted() } {
-                log::warn!("Accessibility permissions not granted — key capture disabled.");
+            // Request Accessibility permission with a prompt if not already trusted.
+            // AXIsProcessTrustedWithOptions forces macOS to re-evaluate the TCC entry
+            // for the current binary hash — fixes cases where the binary was updated
+            // (new build) but the TCC database still has the old hash.
+            #[cfg(target_os = "macos")]
+            {
+                use core_foundation::dictionary::CFDictionary;
+                use core_foundation::string::CFString;
+                use core_foundation::boolean::CFBoolean;
+                use core_foundation::base::TCFType;
+
+                extern "C" {
+                    fn AXIsProcessTrustedWithOptions(options: core_foundation::dictionary::CFDictionaryRef) -> bool;
+                }
+
+                let key = CFString::new("AXTrustedCheckOptionPrompt");
+                let val = CFBoolean::true_value();
+                let opts = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
+                let trusted = unsafe { AXIsProcessTrustedWithOptions(opts.as_concrete_TypeRef()) };
+                if !trusted {
+                    log::warn!("Accessibility not granted — showing system prompt.");
+                }
             }
             event_tap::setup_native_event_tap(app.handle().clone());
 

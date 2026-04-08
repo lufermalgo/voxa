@@ -424,8 +424,11 @@ pub fn setup_native_event_tap(app_handle: tauri::AppHandle) {
     let mask = (1 << 10) | (1 << 11) | (1 << 12) | (1 << 14);
 
     unsafe {
+        // Use Session (not HID) level to avoid requiring Input Monitoring permission.
+        // HID-level taps require kTCCServiceListenEvent which macOS denies for ad-hoc
+        // signed apps launched from Finder/Launchpad. Session level only needs Accessibility.
         let tap_port = native_ffi::CGEventTapCreate(
-            CGEventTapLocation::HID,
+            CGEventTapLocation::Session,
             CGEventTapPlacement::HeadInsertEventTap,
             CGEventTapOptions::Default,
             mask,
