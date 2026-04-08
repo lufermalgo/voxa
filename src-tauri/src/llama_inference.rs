@@ -1,13 +1,12 @@
-use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-/// Finds a free localhost port starting from the given base.
+/// Finds a free localhost port by asking the OS to assign one.
 fn find_free_port() -> u16 {
-    (18474u16..18600)
-        .find(|&p| TcpListener::bind(format!("127.0.0.1:{}", p)).is_ok())
-        .unwrap_or(18474)
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("Failed to bind to find a free port");
+    listener.local_addr().unwrap().port()
 }
 
 pub struct LlamaEngine {
@@ -41,16 +40,17 @@ impl LlamaEngine {
             .map_err(|e| format!("HTTP client build failed: {}", e))?;
 
         // Poll /health until the server is ready (model fully loaded into GPU/CPU memory).
-        // On M3 with Metal, SmolLM2-1.7B Q4_K_M loads in ~1-2s.
+        // On M3 with Metal, Qwen2.5-1.5B Q4_K_M loads in ~1-2s.
         let health_url = format!("http://127.0.0.1:{}/health", port);
         let mut ready = false;
         for _ in 0..60 {
             std::thread::sleep(Duration::from_millis(500));
-            if let Ok(resp) = client.get(&health_url).send() {
-                if resp.status().is_success() {
-                    ready = true;
-                    break;
-                }
+            let ok = client.get(&health_url).send()
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+            if ok {
+                ready = true;
+                break;
             }
         }
 
@@ -61,7 +61,7 @@ impl LlamaEngine {
             ));
         }
 
-        println!("[LlamaServer] Ready on port {}", port);
+        log::info!("LlamaServer ready on port {}", port);
         Ok(Self { _process: process, port, client })
     }
 
@@ -72,9 +72,11 @@ impl LlamaEngine {
             return Ok(text.to_string());
         }
 
-        // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models
+        // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models.
+        // The language guard prevents Qwen from translating the output when the system prompt
+        // is written in a different language than the user's dictation.
         let prompt = format!(
-            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            "<|im_start|>system\nIMPORTANT: Always respond in the SAME language as the user's text. Never translate.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
             system_prompt, text
         );
 
@@ -88,17 +90,15 @@ impl LlamaEngine {
         });
 
         let url = format!("http://127.0.0.1:{}/completion", self.port);
-        let resp = self.client
-            .post(&url)
-            .json(&body)
-            .send()
+
+        let response = self.client.post(&url).json(&body).send()
             .map_err(|e| format!("llama-server request failed: {}", e))?;
 
-        if !resp.status().is_success() {
-            return Err(format!("llama-server returned HTTP {}", resp.status()));
+        if !response.status().is_success() {
+            return Err(format!("llama-server returned HTTP {}", response.status()));
         }
 
-        let json: serde_json::Value = resp.json()
+        let json: serde_json::Value = response.json()
             .map_err(|e| format!("llama-server response parse failed: {}", e))?;
 
         let content = json["content"]

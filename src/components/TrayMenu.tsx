@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { t, Locale } from "../i18n";
 
 export const TrayMenu = () => {
   const [language, setLanguage] = useState("es");
@@ -92,22 +93,22 @@ export const TrayMenu = () => {
       <div className="p-1 flex flex-col">
         {/* Microfono Section */}
         <div className="rounded-[6px] overflow-hidden transition-all duration-300">
-          <ActionItem 
-            icon="settings_voice" 
-            label="Micrófono" 
+          <ActionItem
+            icon="settings_voice"
+            label={t(language as Locale, "tray_mic")}
             value={micId === "auto" || !micId ? "Auto" : (devices.find(d => d.name === micId)?.name || micId).slice(0, 11)}
             onClick={() => setExpandedSection(expandedSection === "mic" ? null : "mic")}
             isActive={expandedSection === "mic"}
           />
           {expandedSection === "mic" && (
             <div className="mx-1 mb-1 p-0.5 bg-black/5 dark:bg-white/5 rounded-[4px] animate-in slide-in-from-top-1 duration-200 max-h-[140px] overflow-y-auto custom-scrollbar">
-              <SubItem 
-                label="Auto-detectar Sistema" 
-                isActive={!micId || micId === 'auto'} 
-                onClick={() => handleUpdateSetting("mic_id", "auto")} 
+              <SubItem
+                label={t(language as Locale, "tray_auto_detect")}
+                isActive={!micId || micId === 'auto'}
+                onClick={() => handleUpdateSetting("mic_id", "auto")}
               />
               {devices.map((d) => (
-                <SubItem 
+                <SubItem
                   key={d.name}
                   label={d.name}
                   isActive={micId === d.name}
@@ -120,22 +121,22 @@ export const TrayMenu = () => {
 
         {/* Lenguaje Section */}
         <div className="rounded-[6px] overflow-hidden transition-all duration-300">
-          <ActionItem 
-            icon="language" 
-            label="Lenguaje" 
+          <ActionItem
+            icon="language"
+            label={t(language as Locale, "tray_lang")}
             value={language.toUpperCase() === "ES" ? "ES" : "EN"}
             onClick={() => setExpandedSection(expandedSection === "lang" ? null : "lang")}
             isActive={expandedSection === "lang"}
           />
           {expandedSection === "lang" && (
             <div className="mx-1 mb-1 p-1 bg-black/5 dark:bg-white/5 rounded-[4px] animate-in slide-in-from-top-1 duration-200 flex gap-1">
-              <button 
+              <button
                 onClick={() => handleUpdateSetting("language", "es")}
                 className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all px-2 ${language.toLowerCase() === 'es' ? 'bg-[#007AFF] text-white shadow-sm' : 'text-white/40 hover:text-white/90 hover:bg-white/5'}`}
               >
                 ESPAÑOL
               </button>
-              <button 
+              <button
                 onClick={() => handleUpdateSetting("language", "en")}
                 className={`flex-1 py-1 rounded-md text-[10px] font-bold transition-all px-2 ${language.toLowerCase() === 'en' ? 'bg-[#007AFF] text-white shadow-sm' : 'text-white/40 hover:text-white/90 hover:bg-white/5'}`}
               >
@@ -149,18 +150,18 @@ export const TrayMenu = () => {
 
         {/* Action Items */}
         <div className="space-y-0.5">
-          <ActionItem icon="history" label="Transcription History" onClick={() => openSettings('history')} />
-          <ActionItem icon="tune" label="AI Profiles" onClick={() => openSettings('profiles')} />
-          <ActionItem icon="spellcheck" label="Custom Dictionary" onClick={() => openSettings('dictionary')} />
-          
+          <ActionItem icon="history" label={t(language as Locale, "tray_history")} onClick={() => openSettings('history')} />
+          <ActionItem icon="tune" label={t(language as Locale, "tray_profiles")} onClick={() => openSettings('profiles')} />
+          <ActionItem icon="spellcheck" label={t(language as Locale, "tray_dictionary")} onClick={() => openSettings('dictionary')} />
+
           <div className="tray-divider" />
-          
-          <ActionItem icon="settings" label="Settings..." onClick={() => openSettings()} />
-          <ActionItem icon="help" label="Help Center" onClick={() => {}} />
-          
+
+          <ActionItem icon="settings" label={t(language as Locale, "tray_settings")} onClick={() => openSettings()} />
+          <ActionItem icon="help" label={t(language as Locale, "tray_help")} onClick={() => {}} />
+
           <div className="tray-divider" />
-          
-          <ActionItem icon="power_settings_new" label="Quit Voxa" onClick={handleQuit} isDestructive />
+
+          <ActionItem icon="power_settings_new" label={t(language as Locale, "tray_quit")} onClick={handleQuit} isDestructive />
         </div>
       </div>
     </div>

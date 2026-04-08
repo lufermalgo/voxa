@@ -1,27 +1,24 @@
 use whisper_rs::{WhisperContext, WhisperContextParameters, FullParams, SamplingStrategy};
 use std::path::Path;
+use std::sync::OnceLock;
+use regex::Regex;
+
+static HALLUCINATION_RE: OnceLock<Regex> = OnceLock::new();
+
+fn get_hallucination_re() -> &'static Regex {
+    HALLUCINATION_RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)\[(?:música|music|silencio|silence|aplausos|applause|ruido|noise|inaudible|risas|laughter|música suave|background music)[^\]]*\]|¡?suscríbete!?|subscribe|¡gracias por ver!|subtítulos\s+por[^\n]*|subtitles\s+by[^\n]*|♪+\s*♪*"
+        ).expect("Invalid hallucination regex")
+    })
+}
 
 /// Removes Whisper hallucination tokens that appear when processing silence or background noise.
 /// Pattern: bracketed tokens like [MÚSICA], [Silencio], [Applause], [Music], ♪♪, etc.
 fn strip_hallucinations(text: &str) -> String {
-    // Known hallucination patterns — Whisper produces these on silent/noisy segments
-    const HALLUCINATIONS: &[&str] = &[
-        "[MÚSICA]", "[Música]", "[música]", "[MUSIC]", "[Music]", "[music]",
-        "[SILENCIO]", "[Silencio]", "[silencio]", "[SILENCE]", "[Silence]",
-        "[APLAUSOS]", "[Aplausos]", "[APPLAUSE]", "[Applause]",
-        "[RUIDO]", "[Ruido]", "[NOISE]", "[Noise]",
-        "[INAUDIBLE]", "[Inaudible]",
-        "[RISAS]", "[Risas]", "[LAUGHTER]", "[Laughter]",
-        // YouTube-style hallucinations common when Whisper processes silence
-        "¡Suscríbete!", "Suscríbete", "Subscribe", "¡Gracias por ver!",
-        "Subtítulos por", "Subtitles by",
-        "♪♪", "♪ ♪", "♪",
-    ];
-    let mut result = text.to_string();
-    for token in HALLUCINATIONS {
-        result = result.replace(token, "");
-    }
-    result.trim().to_string()
+    let re = get_hallucination_re();
+    let cleaned = re.replace_all(text, "");
+    cleaned.trim().to_string()
 }
 
 pub struct WhisperEngine {
@@ -42,9 +39,11 @@ impl WhisperEngine {
     }
 
     pub fn transcribe(&self, audio_data: &[f32], language: &str, initial_prompt: &str) -> Result<String, String> {
-        println!("WHISPER: Starting transcription with {} samples, language: {}, prompt: \"{}\"", audio_data.len(), language, initial_prompt);
+        log::info!("WHISPER: Starting transcription with {} samples, language: {}, prompt: \"{}\"", audio_data.len(), language, initial_prompt);
         
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 0 });
+        // BeamSearch with beam_size=5 is Whisper's default and significantly reduces hallucinations
+        // compared to Greedy, especially on uncertain audio (high entropy segments).
+        let mut params = FullParams::new(SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
 
         params.set_n_threads(4);
         params.set_language(Some(language));
@@ -60,20 +59,20 @@ impl WhisperEngine {
             params.set_initial_prompt(initial_prompt);
         }
 
-        println!("WHISPER: Creating state...");
+        log::debug!("WHISPER: Creating state...");
         let mut state = self.context.create_state().map_err(|e| {
-            println!("WHISPER ERROR: Failed to create state: {}", e);
+            log::error!("WHISPER: Failed to create state: {}", e);
             e.to_string()
         })?;
 
-        println!("WHISPER: Running inference (full)...");
+        log::debug!("WHISPER: Running inference (full)...");
         state.full(params, audio_data).map_err(|e| {
-            println!("WHISPER ERROR: Inference failed: {}", e);
+            log::error!("WHISPER: Inference failed: {}", e);
             e.to_string()
         })?;
 
         let num_segments = state.full_n_segments().map_err(|e| e.to_string())?;
-        println!("WHISPER: Finished inference. Segments found: {}", num_segments);
+        log::debug!("WHISPER: Finished inference. Segments found: {}", num_segments);
 
         let mut result = String::new();
         for i in 0..num_segments {

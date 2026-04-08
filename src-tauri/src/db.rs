@@ -1,11 +1,30 @@
 use rusqlite::{params, Connection, Result};
 use std::fs;
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use tauri::AppHandle;
 use tauri::Manager;
 
 pub struct DbState {
-    pub conn: std::sync::Mutex<Connection>,
+    pub conn: Arc<std::sync::Mutex<Connection>>,
+}
+
+pub struct SettingsCache {
+    inner: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl SettingsCache {
+    pub fn new(initial: HashMap<String, String>) -> Self {
+        Self { inner: Arc::new(RwLock::new(initial)) }
+    }
+
+    pub fn get(&self, key: &str) -> Option<String> {
+        self.inner.read().unwrap().get(key).cloned()
+    }
+
+    pub fn invalidate(&self, key: &str, value: &str) {
+        self.inner.write().unwrap().insert(key.to_string(), value.to_string());
+    }
 }
 
 pub fn init(app_handle: &AppHandle) -> Result<Connection, String> {
@@ -37,8 +56,7 @@ fn init_tables(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
             raw_content TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            is_favorite INTEGER DEFAULT 0
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
@@ -78,20 +96,27 @@ fn init_tables(conn: &Connection) -> Result<()> {
     // Migration: add icon column if missing
     let _ = conn.execute("ALTER TABLE transformation_profiles ADD COLUMN icon TEXT", []);
 
+    // Migration: drop unused columns (idempotent — ignore errors if column doesn't exist)
+    let _ = conn.execute("ALTER TABLE transcripts DROP COLUMN is_favorite", []);
+    let _ = conn.execute("ALTER TABLE custom_dict DROP COLUMN replacement", []);
+    let _ = conn.execute("ALTER TABLE custom_dict DROP COLUMN category", []);
+
     // Insert defaults if empty
     conn.execute(
-        "INSERT OR IGNORE INTO app_settings (key, value) VALUES 
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES
         ('mic_id', 'none'),
         ('language', 'es'),
-        ('interaction_mode', 'push_to_talk'),
-        ('global_shortcut', 'Alt+Space'),
         ('shortcut_push_to_talk', 'Alt+Space'),
         ('shortcut_hands_free', 'F5'),
         ('shortcut_paste', 'CommandOrControl+Shift+V'),
         ('shortcut_cancel', 'Escape'),
-        ('active_profile_id', '1'),
-        ('is_onboarded', 'false')",
+        ('active_profile_id', '1')",
         [],
+    )?;
+
+    // Migration: remove dead settings keys from existing databases
+    conn.execute_batch(
+        "DELETE FROM app_settings WHERE key IN ('interaction_mode', 'global_shortcut', 'is_onboarded');"
     )?;
 
     // Migration: normalise old macOS-specific shortcut strings to standard Tauri V2 accelerators
@@ -122,7 +147,7 @@ fn init_tables(conn: &Connection) -> Result<()> {
 
     if let Some(paste) = settings.get("shortcut_paste") {
         if needs_reset(paste) {
-            println!("DB MIGRATION: Resetting bare paste shortcut '{}' to default.", paste);
+            log::warn!("DB MIGRATION: Resetting bare paste shortcut '{}' to default.", paste);
             conn.execute(
                 "UPDATE app_settings SET value = 'CommandOrControl+Shift+V' WHERE key = 'shortcut_paste'",
                 [],
@@ -132,7 +157,7 @@ fn init_tables(conn: &Connection) -> Result<()> {
 
     if let Some(ptt) = settings.get("shortcut_push_to_talk") {
         if needs_reset(ptt) {
-            println!("DB MIGRATION: Resetting bare PTT shortcut '{}' to default.", ptt);
+            log::warn!("DB MIGRATION: Resetting bare PTT shortcut '{}' to default.", ptt);
             conn.execute(
                 "UPDATE app_settings SET value = 'Alt+Space' WHERE key = 'shortcut_push_to_talk'",
                 [],
@@ -186,21 +211,19 @@ pub struct Transcript {
     pub content: String,
     pub raw_content: String,
     pub timestamp: String,
-    pub is_favorite: bool,
 }
 
 pub fn get_all_transcripts(conn: &Connection) -> Result<Vec<Transcript>> {
     let mut stmt = conn.prepare(
-        "SELECT id, content, raw_content, timestamp, is_favorite FROM transcripts ORDER BY timestamp DESC"
+        "SELECT id, content, raw_content, timestamp FROM transcripts ORDER BY timestamp DESC"
     )?;
-    
+
     let transcript_iter = stmt.query_map([], |row| {
         Ok(Transcript {
             id: row.get(0)?,
             content: row.get(1)?,
             raw_content: row.get(2)?,
             timestamp: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? != 0,
         })
     })?;
 
@@ -230,6 +253,11 @@ pub fn update_transcript_content(conn: &Connection, id: i64, new_content: &str) 
 
 pub fn delete_transcript(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM transcripts WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn clear_all_transcripts(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM transcripts", [])?;
     Ok(())
 }
 

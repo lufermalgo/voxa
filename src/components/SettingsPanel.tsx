@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Locale, translations } from "../i18n";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 interface SettingsPanelProps {
   initialTab?: string;
@@ -55,14 +56,6 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
     'edit_note', 'chat', 'terminal', 'auto_fix_high', 'history_edu', 'verified_user',
     'rocket_launch', 'auto_awesome', 'science', 'article'
   ];
-
-  useEffect(() => {
-    if (initialTab === 'general') {
-      setActiveTab('history');
-    } else {
-      setActiveTab(initialTab);
-    }
-  }, [initialTab]);
 
   useEffect(() => {
     const fetchVersion = async () => {
@@ -176,9 +169,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   const executeClearHistory = async () => {
     setConfirmModal(null);
     try {
-      for (const transcript of transcripts) {
-        await invoke("delete_transcript", { id: transcript.id });
-      }
+      await invoke("clear_transcripts");
       loadHistory();
     } catch (err) {
       console.error("Error clearing history:", err);
@@ -941,11 +932,16 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
 
 function CopyButton({ text, copyLabel }: { text: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  const handleCopy = async () => {
+    await writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    timerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   return (

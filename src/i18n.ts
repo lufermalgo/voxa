@@ -90,6 +90,17 @@ export const translations = {
     size_mb: "MB",
     path: "Path",
     
+    // Tray Menu
+    tray_mic: "Microphone",
+    tray_lang: "Language",
+    tray_auto_detect: "Auto-detect System",
+    tray_history: "Transcription History",
+    tray_profiles: "AI Profiles",
+    tray_dictionary: "Custom Dictionary",
+    tray_settings: "Settings...",
+    tray_help: "Help Center",
+    tray_quit: "Quit Voxa",
+
     // Footer
     footer_engine: "Voxa v{version}"
   },
@@ -184,6 +195,17 @@ export const translations = {
     size_mb: "MB",
     path: "Ruta",
     
+    // Tray Menu
+    tray_mic: "Micrófono",
+    tray_lang: "Lenguaje",
+    tray_auto_detect: "Auto-detectar Sistema",
+    tray_history: "Historial de Transcripciones",
+    tray_profiles: "Perfiles de IA",
+    tray_dictionary: "Diccionario Custom",
+    tray_settings: "Configuración...",
+    tray_help: "Centro de Ayuda",
+    tray_quit: "Salir de Voxa",
+
     // Footer
     footer_engine: "Voxa v{version}"
   }
@@ -191,3 +213,7 @@ export const translations = {
 
 export type Locale = "en" | "es";
 export type TranslationKeys = keyof typeof translations.en;
+
+export function t(locale: Locale, key: TranslationKeys): string {
+  return translations[locale]?.[key] ?? translations["en"][key] ?? key;
+}

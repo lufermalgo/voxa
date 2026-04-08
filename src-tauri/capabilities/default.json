@@ -11,7 +11,6 @@
     "core:menu:default",
     "core:tray:default",
     "core:event:default",
-    "opener:default",
     "global-shortcut:default",
     "clipboard-manager:default"
   ]
