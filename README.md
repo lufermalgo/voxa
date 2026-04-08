@@ -5,7 +5,7 @@
   
   <p align="center">
     <strong>The Silent Conductor of Your Digital Workflow.</strong><br />
-    <em>An ultra-minimalist, privacy-first, system-wide dictation tool.</em>
+    <em>System-wide voice dictation for macOS — 100% local, no cloud, no subscriptions.</em>
   </p>
 
   <p align="center">
@@ -16,6 +16,10 @@
 </div>
 
 ---
+
+**Voxa** is a free, open-source **macOS dictation app** that transcribes your voice and injects text into any application — without sending a single byte to the cloud. Powered by [Whisper](https://github.com/ggerganov/whisper.cpp) for speech-to-text and a local LLM ([llama.cpp](https://github.com/ggerganov/llama.cpp)) for intelligent post-processing, Voxa runs entirely on your machine.
+
+> No API keys. No subscriptions. No data leaves your device.
 
 ## 💎 Philosophy
 
@@ -45,7 +49,7 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 
 ## 📦 Download
 
-**[→ Download Voxa v1.0.0 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.0.0)**
+**[→ Download Voxa v1.0.2 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.0.2)**
 
 > Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4). Intel support coming soon.
 
@@ -88,7 +92,21 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 
 ## 🏗 Architecture
 
-Voxa uses a decoupled **MPSC (Multi-Producer Single-Consumer)** architecture to bridge the asynchronous audio recording stream with the transcription engine, ensuring the UI remains responsive even during heavy inference tasks.
+```
+Hotkey press → AudioEngine (cpal)
+  → WhisperEngine (whisper-rs) → raw transcript
+  → LlamaEngine (llama-server HTTP) → refined text
+  → CGEvent simulate_paste() → target app
+```
+
+Voxa uses a decoupled **MPSC channel** to bridge the audio recording stream with the inference pipeline, keeping the UI fully responsive during transcription.
+
+Key design decisions:
+- **No Dock icon** — runs as `NSApplicationActivationPolicyAccessory` (Alfred/Raycast model). Never steals focus.
+- **Focus preservation** — stores the frontmost app PID via `NSWorkspace` before any Voxa window appears, then restores it via PID-based `activateWithOptions`. Works reliably with Electron and JVM targets (VS Code, IntelliJ).
+- **Native event tap** — uses `CGEventTap` at session level instead of Tauri's global shortcut plugin, which fails for system-reserved keys like `Alt+Space` on macOS.
+- **LLM inference** — `llama-server` runs as a subprocess on a local port. No GPU required; automatically selects Qwen2.5-3B (Apple Silicon) or Qwen2.5-1.5B (Intel) based on hardware.
+- **Audio silence detection** — uses peak amplitude instead of RMS to avoid false negatives on low-volume speech.
 
 ## 📚 Technical Documentation
 
