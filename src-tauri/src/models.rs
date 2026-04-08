@@ -64,7 +64,7 @@ impl ModelManager {
             fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models directory: {}", e))?;
         }
         let gpu_available = detect_gpu();
-        println!("[ModelManager] GPU detected: {}", gpu_available);
+        log::info!("GPU detected: {}", gpu_available);
         Ok(Self {
             base_path: models_dir,
             is_downloading: std::sync::atomic::AtomicBool::new(false),
@@ -148,10 +148,12 @@ impl ModelManager {
         None
     }
 
-    pub fn models_exist(&self) -> bool {
-        self.get_whisper_path().exists()
-            && self.get_llama_path().exists()
-            && self.get_effective_llama_server().is_some()
+    pub fn models_downloaded(&self) -> bool {
+        self.get_whisper_path().exists() && self.get_llama_path().exists()
+    }
+
+    pub fn server_available(&self) -> bool {
+        self.get_effective_llama_server().is_some()
     }
 }
 
@@ -202,7 +204,7 @@ pub async fn open_models_folder(manager: State<'_, ModelManager>) -> Result<(), 
 
 #[tauri::command]
 pub async fn check_models_status(manager: State<'_, ModelManager>) -> Result<bool, String> {
-    Ok(manager.models_exist())
+    Ok(manager.models_downloaded() && manager.server_available())
 }
 
 #[tauri::command]
@@ -237,13 +239,13 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
             if meta.len() > 1_000_000 {
                 continue;
             } else {
-                println!("[WARN] {} is incomplete, re-downloading.", name);
+                log::warn!("{} is incomplete, re-downloading.", name);
                 fs::remove_file(&target_path).map_err(|e| e.to_string())?;
             }
         }
 
         let temp_path = manager.base_path.join(format!("{}.download", name));
-        println!("[DOWNLOAD] {} …", display_name);
+        log::info!("Downloading {} …", display_name);
         
         let response = client.get(*url).send().await.map_err(|e| e.to_string())?;
         let total_size = response.content_length().unwrap_or(0);
@@ -271,7 +273,7 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
         }
         
         fs::rename(&temp_path, &target_path).map_err(|e| e.to_string())?;
-        println!("[DOWNLOAD] {} ready.", display_name);
+        log::info!("Download complete: {}", display_name);
     }
 
     // Cleanup stale model files
@@ -288,11 +290,11 @@ pub async fn download_models(app_handle: AppHandle, manager: State<'_, ModelMana
 
     // Download llama.cpp binary if needed
     if let Err(e) = download_llama_server(&manager, &app_handle, &client).await {
-        eprintln!("[ERROR] llama-server download failed: {}", e);
+        log::error!("llama-server download failed: {}", e);
         return Err(e);
     }
 
-    println!("[INFO] All models ready.");
+    log::info!("All models ready.");
     app_handle.emit("download-complete", ()).unwrap_or_default();
 
     Ok(())
@@ -312,13 +314,13 @@ async fn download_llama_server(manager: &ModelManager, _app_handle: &AppHandle, 
 #[cfg(not(target_os = "macos"))]
 async fn download_llama_server(manager: &ModelManager, app_handle: &AppHandle, client: &Client) -> Result<(), String> {
     if manager.get_effective_llama_server().is_some() {
-        println!("llama-server already available, skipping download.");
+        log::info!("llama-server already available, skipping download.");
         return Ok(());
     }
 
     let target_path = manager.get_llama_server_path();
 
-    println!("Fetching latest llama.cpp release info...");
+    log::info!("Fetching latest llama.cpp release info...");
     app_handle.emit("download-progress", DownloadProgress {
         model: "llama.cpp".to_string(), progress: 0.0, total: 0, current: 0,
     }).unwrap_or_default();
@@ -344,7 +346,7 @@ async fn download_llama_server(manager: &ModelManager, app_handle: &AppHandle, c
 
     if !status.is_success() {
         let msg = format!("GitHub API returned HTTP {}: {}", status, &release_text[..release_text.len().min(200)]);
-        eprintln!("[ERROR] {}", msg);
+        log::error!("{}", msg);
         return Err(msg);
     }
 
@@ -364,7 +366,7 @@ async fn download_llama_server(manager: &ModelManager, app_handle: &AppHandle, c
         .ok_or_else(|| format!("No llama.cpp release asset matching '{}' found", asset_pattern))?
         .to_string();
 
-    println!("Downloading llama.cpp from {}", download_url);
+    log::info!("Downloading llama.cpp from {}", download_url);
 
     let response = client.get(&download_url).send().await.map_err(|e| e.to_string())?;
     let total_size = response.content_length().unwrap_or(0);
@@ -416,7 +418,7 @@ async fn download_llama_server(manager: &ModelManager, app_handle: &AppHandle, c
             .map_err(|e| e.to_string())?;
     }
 
-    println!("llama-server installed at {:?}", target_path);
+    log::info!("llama-server installed at {:?}", target_path);
     Ok(())
 }
 
