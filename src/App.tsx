@@ -10,8 +10,7 @@ import { Locale, translations } from "./i18n";
 import "./App.css";
 
 function App() {
-  const { status, rawText, refinedText, error, downloadModels } = useTranscription();
-  const [hasModels, setHasModels] = useState(true);
+  const { status } = useTranscription();
   const [windowLabel, setWindowLabel] = useState<string>(() => getCurrentWindow().label);
   const [activeTab, setActiveTab] = useState<string>("general");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -38,8 +37,6 @@ function App() {
     const init = async () => {
       try {
         const exists = await invoke<boolean>("check_models_status");
-        setHasModels(exists);
-        
         const locale = await fetchSettings();
 
         if (!exists) {
@@ -53,7 +50,6 @@ function App() {
               await invoke("download_models");
               setDownloadStatus(locale === "es" ? "Listo" : "Ready");
               setIsDownloading(false);
-              setHasModels(true);
             } catch (error) {
               console.error("Error downloading models:", error);
               setDownloadStatus(locale === "es" ? "Error. Revisar logs." : "Error. Check logs.");
@@ -87,7 +83,6 @@ function App() {
     const unlistenComplete = listen("download-complete", () => {
       setIsDownloading(false);
       setDownloadStatus("");
-      setHasModels(true);
     });
 
     return () => {

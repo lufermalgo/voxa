@@ -10,7 +10,6 @@ interface RecorderPillProps {
 
 export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderPillProps) => {
   const isRecording = status === "recording";
-  const isIdle = status === "idle" || status === "";
   const isLoading = status === "loading" || status === "loading_whisper" || status === "loading_llama";
   const t = translations[uiLocale];
 

@@ -1,7 +1,7 @@
 # Voxa
 
 <div align="center">
-  <img src="./public/voxa_logo.png" width="100%" alt="Voxa Voice Interface" />
+  <img src="./public/voxa_logo.png" width="20%" alt="Voxa Voice Interface" />
   
   <p align="center">
     <strong>The Silent Conductor of Your Digital Workflow.</strong><br />
@@ -43,15 +43,32 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
   - `whisper-rs` (Local STT via `whisper.cpp`)
   - `llama-server` HTTP API (Intelligent Post-processing via `llama.cpp`)
 
-## 🚀 Getting Started
+## 📦 Download
+
+**[→ Download Voxa v1.0.0 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.0.0)**
+
+> Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4). Intel support coming soon.
+
+### First-time setup
+
+1. Download and open the `.dmg` file.
+2. Drag **Voxa** to your Applications folder.
+3. On first launch, macOS will ask for **microphone** and **accessibility** permissions — both are required.
+4. Voxa will automatically download the AI models (~1 GB) on first run.
+5. Set your activation shortcut in **Settings** and start dictating.
+
+> **Note:** Voxa runs entirely on-device. No data ever leaves your machine.
+
+## 🚀 Development
 
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18+)
 - [Rust](https://www.rust-lang.org/)
 - [Tauri CLI](https://tauri.app/v1/guides/getting-started/prerequisites)
+- `brew install llama.cpp` (for LLM inference)
 
-### Installation
+### Running locally
 
 1. Clone the repository:
    ```bash
