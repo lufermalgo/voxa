@@ -9,6 +9,7 @@ extern crate objc;
 mod audio;
 mod commands;
 mod db;
+mod vad;
 mod event_tap;
 mod llama_inference;
 mod models;
