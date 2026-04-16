@@ -1,4 +1,5 @@
 use whisper_rs::{WhisperContext, WhisperContextParameters, FullParams, SamplingStrategy};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::OnceLock;
 use regex::Regex;
@@ -13,6 +14,19 @@ fn get_hallucination_re() -> &'static Regex {
     })
 }
 
+fn build_hallucination_set() -> HashSet<String> {
+    let raw = include_str!("hallucination_phrases.txt");
+    raw.lines()
+        .map(|l| l.trim().to_lowercase())
+        .filter(|l| l.chars().count() >= 3)
+        .collect()
+}
+
+fn is_hallucination(text: &str, set: &HashSet<String>) -> bool {
+    let normalized = text.trim().to_lowercase();
+    normalized.len() >= 3 && set.contains(&normalized)
+}
+
 /// Removes Whisper hallucination tokens that appear when processing silence or background noise.
 /// Pattern: bracketed tokens like [MÚSICA], [Silencio], [Applause], [Music], ♪♪, etc.
 fn strip_hallucinations(text: &str) -> String {
@@ -23,6 +37,7 @@ fn strip_hallucinations(text: &str) -> String {
 
 pub struct WhisperEngine {
     context: WhisperContext,
+    hallucination_set: HashSet<String>,
 }
 
 impl WhisperEngine {
@@ -35,7 +50,10 @@ impl WhisperEngine {
         let context = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
             .map_err(|e| format!("Failed to create whisper context: {}", e))?;
             
-        Ok(Self { context })
+        Ok(Self {
+            context,
+            hallucination_set: build_hallucination_set(),
+        })
     }
 
     pub fn transcribe(&self, audio_data: &[f32], language: &str, initial_prompt: &str) -> Result<String, String> {
@@ -77,12 +95,65 @@ impl WhisperEngine {
         let mut result = String::new();
         for i in 0..num_segments {
             let segment = state.full_get_segment_text(i).map_err(|e| e.to_string())?;
-            result.push_str(&segment);
+            let cleaned_segment = strip_hallucinations(&segment);
+            if !is_hallucination(&cleaned_segment, &self.hallucination_set) {
+                result.push_str(&cleaned_segment);
+            }
         }
 
         // Strip Whisper hallucination tokens that appear on silence/music/noise.
         // These are always enclosed in brackets: [MÚSICA], [Silencio], [Applause], etc.
-        let final_text = strip_hallucinations(result.trim());
+        // Additionally check the full assembled result against the known-hallucination set.
+        let after_regex = strip_hallucinations(result.trim());
+        let final_text = if is_hallucination(&after_regex, &self.hallucination_set) {
+            String::new()
+        } else {
+            after_regex
+        };
         Ok(final_text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_set() -> HashSet<String> {
+        build_hallucination_set()
+    }
+
+    #[test]
+    fn test_known_hallucination_is_filtered() {
+        let set = test_set();
+        assert!(is_hallucination("thank you for watching", &set));
+    }
+
+    #[test]
+    fn test_real_speech_not_filtered() {
+        let set = test_set();
+        assert!(!is_hallucination("the deployment pipeline is broken today", &set));
+    }
+
+    #[test]
+    fn test_short_phrases_excluded_from_set() {
+        let set = test_set();
+        assert!(!set.contains("a"));
+        assert!(!set.contains("ok"));
+        assert!(set.iter().all(|p| p.chars().count() >= 3));
+    }
+
+    #[test]
+    fn test_empty_string_no_panic() {
+        let set = test_set();
+        assert!(!is_hallucination("", &set));
+    }
+
+    #[test]
+    fn test_mixed_segments() {
+        let set = test_set();
+        // Real speech should not be filtered
+        assert!(!is_hallucination("hello, how are you doing today?", &set));
+        // Known hallucination should be filtered
+        assert!(is_hallucination("thank you for watching", &set));
     }
 }
