@@ -349,3 +349,24 @@ fn extract_new_words(raw: &str, corrected: &str) -> Vec<String> {
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// Active app query
+// ---------------------------------------------------------------------------
+
+/// Returns the frontmost app's name and icon (base64 PNG) on demand.
+/// Useful for displaying app context in UI without waiting for a recording event.
+#[tauri::command]
+pub fn get_active_app() -> Option<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        let pid = crate::event_tap::get_frontmost_app_pid()?;
+        let info = crate::event_tap::get_app_info_for_pid(pid)?;
+        Some(serde_json::json!({
+            "name": info.name,
+            "icon": info.icon_base64,
+        }))
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
