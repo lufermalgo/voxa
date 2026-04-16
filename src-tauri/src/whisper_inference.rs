@@ -47,7 +47,12 @@ impl WhisperEngine {
         }
         
         let path_str = model_path.to_str().ok_or("Invalid path")?;
-        let context = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
+        let mut wparams = WhisperContextParameters::default();
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            wparams.use_gpu = true;
+        }
+        let context = WhisperContext::new_with_params(path_str, wparams)
             .map_err(|e| format!("Failed to create whisper context: {}", e))?;
             
         Ok(Self {
