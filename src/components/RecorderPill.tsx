@@ -59,7 +59,11 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
   if (isRecording) {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px]">
+        <div
+          className={`h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px] transition-colors duration-700 ${
+            isWarning ? 'bg-amber-600' : 'bg-primary'
+          }`}
+        >
           <div className="absolute inset-0 bg-white/5" />
 
           {/* X — Cancel: discard recording, back to idle */}
@@ -95,12 +99,12 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
             <span className="material-symbols-outlined !text-[20px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
           </button>
 
-          {/* Duration indicator — 2px bottom bar growing left→right.
-              Normal (0–80%): white/25 — subtle.
-              Warning (80–100%): amber-400 + pulse — prompts user to wrap up. */}
+          {/* Duration indicator — bottom bar growing left→right.
+              Normal (0–80%): white/30, 2px — subtle progress feedback.
+              Warning (80–100%): amber-300, 3px, pulse — pill bg also turns amber. */}
           <div
-            className={`absolute bottom-0 left-0 h-[2px] transition-colors duration-700 ${
-              isWarning ? 'bg-amber-400 animate-pulse' : 'bg-white/25'
+            className={`absolute bottom-0 left-0 transition-colors duration-700 ${
+              isWarning ? 'h-[3px] bg-amber-300 animate-pulse' : 'h-[2px] bg-white/30'
             }`}
             style={{ width: `${progress * 100}%`, transition: 'width 200ms linear, background-color 700ms ease' }}
           />
