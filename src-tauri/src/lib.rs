@@ -207,6 +207,7 @@ pub fn run() {
             commands::exit_app,
             shortcuts::start_native_key_capture,
             commands::check_accessibility_permissions,
+            commands::get_active_app,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .run(tauri::generate_context!())
