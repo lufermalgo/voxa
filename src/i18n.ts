@@ -3,6 +3,7 @@ export const translations = {
     // Recorder Pill
     processing: "Processing...",
     recording: "Recording",
+    recording_limit_warning: "Ending soon",
     sent: "Sent",
     loading: "Loading...",
     provisioning: "Provisioning AI (Metal)...",
@@ -110,6 +111,7 @@ export const translations = {
     // Recorder Pill
     processing: "Procesando...",
     recording: "Grabando",
+    recording_limit_warning: "Finalizando sesión",
     sent: "Enviado",
     loading: "Cargando...",
     provisioning: "Proveyendo IA (Metal)...",

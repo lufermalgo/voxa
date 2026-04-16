@@ -58,7 +58,15 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
 
   if (isRecording) {
     return (
-      <div className="animate-in fade-in zoom-in-95 duration-500">
+      <div className="animate-in fade-in zoom-in-95 duration-500 flex flex-col items-center gap-1">
+        {/* Warning label — appears above the pill at 80% of recording limit */}
+        {isWarning && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 bg-amber-500/90 px-2 py-[2px] rounded-full shadow-lg">
+            <span className="text-[9px] font-bold text-white tracking-voxa-label uppercase font-manrope whitespace-nowrap">
+              {t.recording_limit_warning}
+            </span>
+          </div>
+        )}
         <div
           className={`h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px] transition-colors duration-700 ${
             isWarning ? 'bg-amber-600' : 'bg-primary'
