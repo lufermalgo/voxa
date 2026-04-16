@@ -12,10 +12,8 @@ const SPEECH_THRESHOLD: f32 = 0.5;
 
 pub struct VadEngine {
     session: Session,
-    /// LSTM hidden state, shape [2, 1, 64].
-    h: Vec<f32>,
-    /// LSTM cell state, shape [2, 1, 64].
-    c: Vec<f32>,
+    /// LSTM state tensor, shape [2, 1, 128] — h and c combined into one tensor.
+    state: Vec<f32>,
     /// Last 64 samples carried across frames (v6 context requirement).
     context: Vec<f32>,
     /// How many consecutive speech frames we have seen.
@@ -36,8 +34,7 @@ impl VadEngine {
 
         Ok(Self {
             session,
-            h: vec![0.0f32; 2 * 1 * 64],
-            c: vec![0.0f32; 2 * 1 * 64],
+            state: vec![0.0f32; 2 * 1 * 128],
             context: vec![0.0f32; CONTEXT_SIZE],
             speech_frames: 0,
             silence_frames: 0,
@@ -87,17 +84,10 @@ impl VadEngine {
                 return self.is_speaking;
             }
         };
-        let h_tensor = match Tensor::<f32>::from_array(([2usize, 1, 64], self.h.clone().into_boxed_slice())) {
+        let state_tensor = match Tensor::<f32>::from_array(([2usize, 1, 128], self.state.clone().into_boxed_slice())) {
             Ok(t) => t,
             Err(e) => {
-                log::warn!("VAD: Failed to create h tensor: {e}");
-                return self.is_speaking;
-            }
-        };
-        let c_tensor = match Tensor::<f32>::from_array(([2usize, 1, 64], self.c.clone().into_boxed_slice())) {
-            Ok(t) => t,
-            Err(e) => {
-                log::warn!("VAD: Failed to create c tensor: {e}");
+                log::warn!("VAD: Failed to create state tensor: {e}");
                 return self.is_speaking;
             }
         };
@@ -105,8 +95,7 @@ impl VadEngine {
         let outputs = match self.session.run(ort::inputs![
             "input" => input_tensor,
             "sr"    => sr_tensor,
-            "h"     => h_tensor,
-            "c"     => c_tensor,
+            "state" => state_tensor,
         ]) {
             Ok(o) => o,
             Err(e) => {
@@ -121,15 +110,10 @@ impl VadEngine {
             Err(_) => 0.0,
         };
 
-        // Update hidden states
-        if let Ok((_shape, hn_data)) = outputs["hn"].try_extract_tensor::<f32>() {
-            if hn_data.len() == 2 * 1 * 64 {
-                self.h.copy_from_slice(hn_data);
-            }
-        }
-        if let Ok((_shape, cn_data)) = outputs["cn"].try_extract_tensor::<f32>() {
-            if cn_data.len() == 2 * 1 * 64 {
-                self.c.copy_from_slice(cn_data);
+        // Update LSTM state
+        if let Ok((_shape, state_data)) = outputs["stateN"].try_extract_tensor::<f32>() {
+            if state_data.len() == 2 * 1 * 128 {
+                self.state.copy_from_slice(state_data);
             }
         }
 
@@ -154,8 +138,7 @@ impl VadEngine {
     /// Reset all state for a new recording session.
     /// Must be called before each new recording to avoid stale LSTM state.
     pub fn reset(&mut self) {
-        self.h.iter_mut().for_each(|x| *x = 0.0);
-        self.c.iter_mut().for_each(|x| *x = 0.0);
+        self.state.iter_mut().for_each(|x| *x = 0.0);
         self.context.iter_mut().for_each(|x| *x = 0.0);
         self.speech_frames = 0;
         self.silence_frames = 0;
