@@ -101,6 +101,10 @@ fn init_tables(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE custom_dict DROP COLUMN replacement", []);
     let _ = conn.execute("ALTER TABLE custom_dict DROP COLUMN category", []);
 
+    // Migration: add replacement_word and usage_count columns (additive — existing rows keep data)
+    let _ = conn.execute("ALTER TABLE custom_dict ADD COLUMN replacement_word TEXT", []);
+    let _ = conn.execute("ALTER TABLE custom_dict ADD COLUMN usage_count INTEGER DEFAULT 0", []);
+
     // Insert defaults if empty
     conn.execute(
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES
@@ -357,15 +361,74 @@ pub fn delete_profile(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct DictionaryEntry {
+    pub word: String,
+    pub replacement_word: Option<String>,
+    pub usage_count: i64,
+}
+
 pub fn get_custom_dictionary(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT word FROM custom_dict")?;
     let word_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    
+
     let mut words = Vec::new();
     for word in word_iter {
         words.push(word?);
     }
     Ok(words)
+}
+
+pub fn get_dictionary_entries(conn: &Connection) -> Result<Vec<DictionaryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT word, replacement_word, COALESCE(usage_count, 0) FROM custom_dict ORDER BY usage_count DESC"
+    )?;
+    let iter = stmt.query_map([], |row| {
+        Ok(DictionaryEntry {
+            word: row.get(0)?,
+            replacement_word: row.get(1)?,
+            usage_count: row.get(2)?,
+        })
+    })?;
+    let mut entries = Vec::new();
+    for e in iter {
+        entries.push(e?);
+    }
+    Ok(entries)
+}
+
+pub fn get_replacement_entries(conn: &Connection) -> Result<Vec<DictionaryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT word, replacement_word, COALESCE(usage_count, 0) FROM custom_dict WHERE replacement_word IS NOT NULL AND replacement_word != ''"
+    )?;
+    let iter = stmt.query_map([], |row| {
+        Ok(DictionaryEntry {
+            word: row.get(0)?,
+            replacement_word: row.get(1)?,
+            usage_count: row.get(2)?,
+        })
+    })?;
+    let mut entries = Vec::new();
+    for e in iter {
+        entries.push(e?);
+    }
+    Ok(entries)
+}
+
+pub fn update_replacement_word(conn: &Connection, word: &str, replacement: Option<&str>) -> Result<()> {
+    conn.execute(
+        "UPDATE custom_dict SET replacement_word = ?1 WHERE word = ?2",
+        params![replacement, word],
+    )?;
+    Ok(())
+}
+
+pub fn increment_usage_count(conn: &Connection, word: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE custom_dict SET usage_count = COALESCE(usage_count, 0) + 1 WHERE word = ?1",
+        params![word],
+    )?;
+    Ok(())
 }
 
 pub fn remove_from_dictionary(conn: &Connection, word: &str) -> Result<()> {

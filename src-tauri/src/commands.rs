@@ -181,6 +181,24 @@ pub async fn get_custom_dictionary(state: State<'_, DbState>) -> Result<Vec<Stri
 }
 
 #[tauri::command]
+pub async fn get_dictionary_entries(state: State<'_, DbState>) -> Result<Vec<db::DictionaryEntry>, String> {
+    let conn = Arc::clone(&state.conn);
+    tokio::task::spawn_blocking(move || {
+        let guard = conn.lock().map_err(|e| e.to_string())?;
+        db::get_dictionary_entries(&guard).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn update_replacement_word(state: State<'_, DbState>, word: String, replacement: Option<String>) -> Result<(), String> {
+    let conn = Arc::clone(&state.conn);
+    tokio::task::spawn_blocking(move || {
+        let guard = conn.lock().map_err(|e| e.to_string())?;
+        db::update_replacement_word(&guard, &word, replacement.as_deref()).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn add_to_dictionary(state: State<'_, DbState>, word: String) -> Result<(), String> {
     let conn = Arc::clone(&state.conn);
     tokio::task::spawn_blocking(move || {
