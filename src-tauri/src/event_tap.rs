@@ -358,31 +358,48 @@ pub fn get_browser_tab_url(pid: i32, bundle_id: &str) -> Option<String> {
             return url;
         }
 
-        // Chromium + Firefox: BFS through the UI tree to find the URL bar.
+        // Chromium + Firefox: true BFS (VecDeque, FIFO) so shallow toolbar elements
+        // are visited before deep web content.
         // Queue items are retained references we own and must CFRelease.
-        let mut queue: Vec<(Ref, u32)> = vec![(window, 7)];
+        let mut queue: std::collections::VecDeque<(Ref, u32)> = std::collections::VecDeque::new();
+        queue.push_back((window, 10));
         let mut found: Option<String> = None;
 
-        while let Some((elem, depth)) = queue.pop() {
+        while let Some((elem, depth)) = queue.pop_front() {
             if found.is_none() {
                 let role = ax_str(elem, "AXRole").unwrap_or_default();
 
-                // Skip web content — avoids traversing the entire page DOM.
+                // Skip web content subtrees — avoids traversing the page DOM.
                 if role != "AXWebArea" {
                     if role == "AXTextField" || role == "AXComboBox" {
-                        let id = ax_str(elem, "AXIdentifier").unwrap_or_default();
-                        let id_lc = id.to_lowercase();
-                        if id_lc.contains("address") || id_lc.contains("url") || id == "urlbar-input" {
+                        let id   = ax_str(elem, "AXIdentifier").unwrap_or_default();
+                        let desc = ax_str(elem, "AXDescription").unwrap_or_default();
+                        let id_lc   = id.to_lowercase();
+                        let desc_lc = desc.to_lowercase();
+
+                        // Match by identifier OR description (Chrome ≥100 often has empty identifier).
+                        let looks_like_url_bar =
+                            id_lc.contains("address") || id_lc.contains("url") ||
+                            id == "urlbar-input" ||
+                            desc_lc.contains("address") || desc_lc.contains("search");
+
+                        if looks_like_url_bar {
                             if let Some(val) = ax_str(elem, "AXValue") {
-                                if val.starts_with("http://") || val.starts_with("https://") {
-                                    found = Some(val);
+                                if !val.is_empty() && !val.contains('\n') {
+                                    // Normalize: Chrome omits the scheme when bar is unfocused.
+                                    let url = if val.starts_with("http://") || val.starts_with("https://") {
+                                        val
+                                    } else {
+                                        format!("https://{}", val)
+                                    };
+                                    found = Some(url);
                                 }
                             }
                         }
                     }
                     if found.is_none() && depth > 0 {
                         for child in ax_children(elem) {
-                            queue.push((child, depth - 1));
+                            queue.push_back((child, depth - 1));
                         }
                     }
                 }
@@ -399,11 +416,12 @@ pub fn get_browser_tab_url(pid: i32, bundle_id: &str) -> Option<String> {
 pub fn domain_from_url(url: &str) -> Option<String> {
     let without_scheme = url
         .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url); // handle scheme-less URLs already normalised by caller
     let host = without_scheme.split('/').next()?;
     let host_no_port = host.split(':').next()?;
     let domain = host_no_port.strip_prefix("www.").unwrap_or(host_no_port);
-    if domain.is_empty() { None } else { Some(domain.to_lowercase()) }
+    if domain.is_empty() || !domain.contains('.') { None } else { Some(domain.to_lowercase()) }
 }
 
 /// Maps a known web app domain to a human-readable display name.
