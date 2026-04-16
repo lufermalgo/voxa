@@ -1,5 +1,6 @@
 // Native macOS CGEventTap — FFI, callback, and helper functions.
 // This module owns the global event tap and all related OS-level utilities.
+#![allow(clashing_extern_declarations)]
 
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicBool, Ordering};
 use tauri::Manager;
@@ -282,7 +283,6 @@ pub fn get_browser_tab_url(pid: i32, bundle_id: &str) -> Option<String> {
     type AXError = i32;
     const AX_OK: AXError = 0;
 
-    #[allow(clashing_extern_declarations)]
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
         fn AXUIElementCreateApplication(pid: i32) -> Ref;
@@ -377,14 +377,34 @@ pub fn get_browser_tab_url(pid: i32, bundle_id: &str) -> Option<String> {
                         let id_lc   = id.to_lowercase();
                         let desc_lc = desc.to_lowercase();
 
-                        // Match by identifier OR description (Chrome ≥100 often has empty identifier).
+                        // Match by identifier OR description.
+                        // Chrome ≥100 often has empty AXIdentifier, so description is the
+                        // reliable fallback. Include Spanish macOS strings (e.g. "Buscar o escribir URL").
                         let looks_like_url_bar =
                             id_lc.contains("address") || id_lc.contains("url") ||
+                            id_lc.contains("omnibox") ||
                             id == "urlbar-input" ||
-                            desc_lc.contains("address") || desc_lc.contains("search");
+                            desc_lc.contains("address") || desc_lc.contains("search") ||
+                            desc_lc.contains("url") || desc_lc.contains("buscar") ||
+                            desc_lc.contains("direcci");
 
-                        if looks_like_url_bar {
-                            if let Some(val) = ax_str(elem, "AXValue") {
+                        // Shallow-depth fallback: any text field near the toolbar (depth >= 6,
+                        // meaning ≤ 4 levels from the window) whose value looks like a URL.
+                        let val_candidate = if !looks_like_url_bar && depth >= 6 {
+                            ax_str(elem, "AXValue").filter(|v| {
+                                !v.is_empty() && !v.contains(' ') && !v.contains('\n') && v.contains('.')
+                            })
+                        } else {
+                            None
+                        };
+
+                        if looks_like_url_bar || val_candidate.is_some() {
+                            let val_opt = if looks_like_url_bar {
+                                ax_str(elem, "AXValue")
+                            } else {
+                                val_candidate
+                            };
+                            if let Some(val) = val_opt {
                                 if !val.is_empty() && !val.contains('\n') {
                                     // Normalize: Chrome omits the scheme when bar is unfocused.
                                     let url = if val.starts_with("http://") || val.starts_with("https://") {
