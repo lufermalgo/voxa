@@ -1,14 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { Locale, translations } from "../i18n";
 import { useAudioLevel } from "../hooks/useAudioLevel";
 import { useRecordingDuration } from "../hooks/useRecordingDuration";
 import { AppInfo } from "../hooks/useTranscription";
 
 const PILL_WINDOW_HEIGHT_NORMAL  = 100;
-const PILL_WINDOW_HEIGHT_WARNING = 220; // card (~90px) + pill (28px) + gap + padding
+const PILL_WINDOW_HEIGHT_WARNING = 220; // pill (28px) + gap (8px) + card (~90px) + padding
 
 interface RecorderPillProps {
   status: string;
@@ -25,26 +25,12 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
 
   const barHeights = useAudioLevel(isRecording);
   const { progress, isWarning, timeRemaining } = useRecordingDuration(isRecording);
-  const originalPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Expand the window UPWARD so the popup card appears ABOVE the pill.
-  // Store original physical position, move window up by the extra height
-  // (scaled to physical pixels via scaleFactor), restore on dismiss.
+  // Expand the window downward when warning fires so the popup card is visible.
+  // setSize alone is enough — window grows down from its current position.
   useEffect(() => {
     const win = getCurrentWindow();
-    const extraHeight = PILL_WINDOW_HEIGHT_WARNING - PILL_WINDOW_HEIGHT_NORMAL;
-
-    if (isWarning) {
-      Promise.all([win.outerPosition(), win.scaleFactor()]).then(([pos, scale]) => {
-        originalPosRef.current = { x: pos.x, y: pos.y };
-        win.setPosition(new PhysicalPosition(pos.x, pos.y - Math.round(extraHeight * scale)));
-        win.setSize(new LogicalSize(300, PILL_WINDOW_HEIGHT_WARNING));
-      });
-    } else if (originalPosRef.current) {
-      win.setPosition(new PhysicalPosition(originalPosRef.current.x, originalPosRef.current.y));
-      win.setSize(new LogicalSize(300, PILL_WINDOW_HEIGHT_NORMAL));
-      originalPosRef.current = null;
-    }
+    win.setSize(new LogicalSize(300, isWarning ? PILL_WINDOW_HEIGHT_WARNING : PILL_WINDOW_HEIGHT_NORMAL));
   }, [isWarning]);
 
   const handleStop = () => invoke("stop_and_transcribe");
@@ -87,10 +73,7 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
 
   if (isRecording) {
     return (
-      // flex-col-reverse: card renders first in DOM = appears at TOP visually,
-      // pill second = appears at BOTTOM. Combined with the window moving upward,
-      // the card floats above the pill's original screen position.
-      <div className="animate-in fade-in zoom-in-95 duration-500 flex flex-col-reverse items-center gap-2">
+      <div className="animate-in fade-in zoom-in-95 duration-500 flex flex-col items-center gap-2">
 
         {/* ── Pill (bottom) ── */}
         <div
@@ -145,16 +128,14 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
 
           {/* Duration progress bar — visible from the start, turns amber at 80% */}
           <div
-            className={`absolute bottom-0 left-0 rounded-b-voxa transition-all duration-700 ${
-              isWarning ? 'h-[5px] bg-amber-400' : 'h-[3px] bg-white/55'
-            }`}
-            style={{ width: `${progress * 100}%`, transitionProperty: 'width, height, background-color' }}
+            className={`absolute bottom-0 left-0 ${isWarning ? 'h-[5px] bg-amber-400' : 'h-[3px] bg-white/50'}`}
+            style={{ width: `${progress * 100}%`, transition: 'width 200ms linear, height 700ms ease, background-color 700ms ease' }}
           />
         </div>
 
-        {/* ── Warning popup card (top) — fades in above the pill at 80% ── */}
+        {/* ── Warning popup card (below pill) — fades in at 80% ── */}
         {isWarning && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-[268px] bg-[#1c1c1e] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300 w-[268px] bg-[#1c1c1e] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined text-amber-400 !text-[20px] mt-0.5 flex-shrink-0">warning</span>
               <div className="flex flex-col gap-1">
