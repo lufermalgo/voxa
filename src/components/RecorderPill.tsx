@@ -2,14 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { Locale, translations } from "../i18n";
 import { useAudioLevel } from "../hooks/useAudioLevel";
 import { useRecordingDuration } from "../hooks/useRecordingDuration";
+import { AppInfo } from "../hooks/useTranscription";
 
 interface RecorderPillProps {
   status: string;
   label?: string;
   uiLocale: Locale;
+  appInfo?: AppInfo | null;
 }
 
-export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderPillProps) => {
+export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: RecorderPillProps) => {
   const isRecording = status === "recording";
   const isLoading = status === "loading" || status === "loading_whisper" || status === "loading_llama";
   const t = translations[uiLocale];
@@ -98,6 +100,23 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
               />
             ))}
           </div>
+
+          {/* App icon — target app where text will be pasted */}
+          {appInfo && (
+            <div title={appInfo.name} className="flex-shrink-0 z-10">
+              {appInfo.icon ? (
+                <img
+                  src={`data:image/png;base64,${appInfo.icon}`}
+                  alt={appInfo.name}
+                  className="w-5 h-5 rounded-[4px] opacity-80"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-[4px] bg-white/20 flex items-center justify-center opacity-80">
+                  <span className="text-[9px] font-bold text-white">{appInfo.name.charAt(0).toUpperCase()}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Stop — process and transcribe */}
           <button

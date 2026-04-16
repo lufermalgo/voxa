@@ -10,7 +10,7 @@ import { Locale, translations } from "./i18n";
 import "./App.css";
 
 function App() {
-  const { status } = useTranscription();
+  const { status, appInfo } = useTranscription();
   const [windowLabel, setWindowLabel] = useState<string>(() => getCurrentWindow().label);
   const [activeTab, setActiveTab] = useState<string>("general");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -109,10 +109,11 @@ function App() {
   if (windowLabel === "main") {
     return (
       <div className="w-full h-full flex items-end justify-center pb-5 bg-transparent overflow-hidden">
-        <RecorderPill 
-          status={isDownloading ? "loading" : status} 
-          label={isDownloading ? downloadStatus : undefined} 
+        <RecorderPill
+          status={isDownloading ? "loading" : status}
+          label={isDownloading ? downloadStatus : undefined}
           uiLocale={uiLocale}
+          appInfo={appInfo}
         />
       </div>
     );
