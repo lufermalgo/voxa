@@ -116,7 +116,7 @@ impl LlamaEngine {
 
         let body = serde_json::json!({
             "prompt": prompt,
-            "n_predict": 600,
+            "n_predict": 300,
             "temperature": 0.0,
             "stop": ["<|im_end|>", "<|endoftext|>", "<|im_start|>"],
             "stream": false,

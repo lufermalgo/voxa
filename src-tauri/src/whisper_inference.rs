@@ -64,9 +64,10 @@ impl WhisperEngine {
     pub fn transcribe(&self, audio_data: &[f32], language: &str, initial_prompt: &str) -> Result<String, String> {
         log::info!("WHISPER: Starting transcription with {} samples, language: {}, prompt: \"{}\"", audio_data.len(), language, initial_prompt);
         
-        // BeamSearch with beam_size=5 is Whisper's default and significantly reduces hallucinations
-        // compared to Greedy, especially on uncertain audio (high entropy segments).
-        let mut params = FullParams::new(SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
+        // Greedy (best_of=1) is 3-5x faster than BeamSearch on Metal and gives equivalent
+        // quality for clean microphone audio. Hallucination protection comes from the HashSet
+        // filter and no_speech_thold — BeamSearch is not needed here.
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
         params.set_n_threads(4);
         params.set_language(Some(language));
