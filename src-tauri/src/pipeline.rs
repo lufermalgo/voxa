@@ -107,11 +107,44 @@ fn bundle_id_to_profile_keyword(bundle_id: &str) -> Option<&'static str> {
     None
 }
 
+/// Maps a browser tab domain to a profile keyword.
+fn domain_to_profile_keyword(domain: &str) -> Option<&'static str> {
+    let d = domain;
+    if d == "mail.google.com" || d.contains("outlook.") || d.contains("fastmail")
+        || d.contains("protonmail") { return Some("Informal"); }
+    if d == "github.com" || d == "gitlab.com" || d.ends_with(".atlassian.net")
+        || d == "linear.app" || d == "bitbucket.org" { return Some("Code"); }
+    if d == "notion.so" || d == "docs.google.com" || d == "coda.io"
+        || d.contains("confluence") { return Some("Elegant"); }
+    if d.ends_with(".slack.com") || d == "discord.com" || d == "twitter.com"
+        || d == "x.com" || d == "linkedin.com" { return Some("Informal"); }
+    None
+}
+
 /// Given a PID, returns the best matching profile name (keyword) or None if no match.
 pub fn detect_profile_keyword_for_pid(pid: i32) -> Option<&'static str> {
     let bundle_id = bundle_id_for_pid(pid)?;
     log::debug!("Auto-profile: bundle_id={}", bundle_id);
-    bundle_id_to_profile_keyword(&bundle_id)
+
+    // 1. Match by bundle ID (native apps)
+    if let Some(kw) = bundle_id_to_profile_keyword(&bundle_id) {
+        return Some(kw);
+    }
+
+    // 2. For browsers, match by active tab domain
+    #[cfg(target_os = "macos")]
+    if crate::event_tap::is_browser_bundle_id(&bundle_id) {
+        if let Some(url) = crate::event_tap::get_browser_tab_url(pid, &bundle_id) {
+            if let Some(domain) = crate::event_tap::domain_from_url(&url) {
+                log::debug!("Auto-profile: browser domain={}", domain);
+                if let Some(kw) = domain_to_profile_keyword(&domain) {
+                    return Some(kw);
+                }
+            }
+        }
+    }
+
+    None
 }
 
 // ---------------------------------------------------------------------------
