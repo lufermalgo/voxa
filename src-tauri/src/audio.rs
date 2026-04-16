@@ -5,6 +5,10 @@ use rubato::{
     SincFixedIn, SincInterpolationParameters, SincInterpolationType,
     WindowFunction, Resampler,
 };
+use crate::vad::VadEngine;
+
+/// Raw bytes of the bundled Silero VAD v6 ONNX model.
+static VAD_MODEL_BYTES: &[u8] = include_bytes!("../models/silero_vad_v6.onnx");
 
 pub struct SendStream(pub cpal::Stream);
 unsafe impl Send for SendStream {}
@@ -20,16 +24,30 @@ pub struct AudioEngine {
     /// Updated by the audio callback on every chunk (~10ms). Read by the
     /// level-polling thread to drive the real-time waveform animation.
     pub current_level: Arc<AtomicU32>,
+    /// Silero VAD engine. None if initialisation failed (fallback to peak-amplitude).
+    pub vad: Option<Arc<Mutex<VadEngine>>>,
 }
 
 impl AudioEngine {
     pub fn new() -> Self {
+        let vad = match VadEngine::new(VAD_MODEL_BYTES) {
+            Ok(engine) => {
+                log::info!("VAD: Silero VAD v6 initialised successfully");
+                Some(Arc::new(Mutex::new(engine)))
+            }
+            Err(e) => {
+                log::warn!("VAD: Failed to initialise Silero VAD v6, falling back to peak-amplitude silence detection: {e}");
+                None
+            }
+        };
+
         Self {
             state: Mutex::new(AudioState {
                 stream: None,
                 buffer: Arc::new(Mutex::new(Vec::new())),
             }),
             current_level: Arc::new(AtomicU32::new(0)),
+            vad,
         }
     }
 }

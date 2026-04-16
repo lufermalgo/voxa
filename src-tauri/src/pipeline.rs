@@ -201,6 +201,12 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         *ctx.post_text.lock().unwrap() = post_text;
                     }
                     if let Some(audio_engine) = app.try_state::<AudioEngine>() {
+                        // Reset VAD state for a clean new session
+                        if let Some(vad_arc) = &audio_engine.vad {
+                            if let Ok(mut vad) = vad_arc.lock() {
+                                vad.reset();
+                            }
+                        }
                         let mic_id = app.state::<SettingsCache>().get("mic_id");
                         match audio::setup_stream(&audio_engine, mic_id) {
                             Ok(_) => {
@@ -270,10 +276,31 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         continue;
                     }
 
-                    // Skip silence (peak check, not RMS — see architecture doc)
-                    let peak = samples.iter().cloned().fold(0.0f32, f32::max);
-                    if peak < 0.05 {
-                        log::debug!("STT: Skipped — silence detected (peak {:.4})", peak);
+                    // Silence detection: Silero VAD v6 (preferred) or peak-amplitude fallback.
+                    // VAD processes the resampled 16 kHz samples in 512-sample frames.
+                    let is_silent = if let Some(vad_arc) = &audio_engine.vad {
+                        if let Ok(mut vad) = vad_arc.lock() {
+                            let mut any_speech = false;
+                            for chunk in samples.chunks(512) {
+                                if vad.process_frame(chunk) {
+                                    any_speech = true;
+                                    break;
+                                }
+                            }
+                            !any_speech
+                        } else {
+                            // Mutex poisoned — fall back to peak
+                            let peak = samples.iter().cloned().fold(0.0f32, f32::max);
+                            peak < 0.05
+                        }
+                    } else {
+                        // VAD unavailable — fall back to peak-amplitude check
+                        let peak = samples.iter().cloned().fold(0.0f32, f32::max);
+                        peak < 0.05
+                    };
+
+                    if is_silent {
+                        log::debug!("STT: Skipped — silence detected by VAD");
                         let _ = app.emit("pipeline-status", "idle");
                         continue;
                     }
