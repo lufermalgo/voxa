@@ -110,7 +110,8 @@ fn init_tables(conn: &Connection) -> Result<()> {
         ('shortcut_hands_free', 'F5'),
         ('shortcut_paste', 'CommandOrControl+Shift+V'),
         ('shortcut_cancel', 'Escape'),
-        ('active_profile_id', '1')",
+        ('active_profile_id', '1'),
+        ('auto_detect_profile', 'true')",
         [],
     )?;
 

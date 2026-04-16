@@ -21,7 +21,8 @@ mod window_utils;
 use crate::audio::AudioEngine;
 use crate::db::{DbState, SettingsCache};
 use crate::pipeline::{
-    DictationEvent, DictationSender, EngineState, FrontmostApp, PipelineHandle, RecordingState,
+    DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
+    PipelineHandle, RecordingState,
 };
 use crate::shortcuts::{NativeShortcuts, NATIVE_SHORTCUTS};
 
@@ -108,6 +109,7 @@ pub fn run() {
             app.manage(DictationSender(Mutex::new(tx)));
             app.manage(RecordingState(AtomicBool::new(false)));
             app.manage(FrontmostApp(Mutex::new(0i32)));
+            app.manage(ManualProfileOverride(Mutex::new(None)));
             app.manage(PipelineHandle { cancelled: Arc::new(AtomicBool::new(false)) });
 
             // Pre-warm LlamaEngine in background (build OUTSIDE the mutex — see invariants)
@@ -193,6 +195,7 @@ pub fn run() {
             models::get_models_info,
             models::open_models_folder,
             commands::show_settings,
+            commands::set_manual_profile_override,
             commands::get_system_locale,
             commands::exit_app,
             shortcuts::start_native_key_capture,

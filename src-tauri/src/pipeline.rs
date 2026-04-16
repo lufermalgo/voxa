@@ -22,6 +22,7 @@ pub enum DictationEvent {
 pub struct DictationSender(pub Mutex<mpsc::Sender<DictationEvent>>);
 pub struct RecordingState(pub AtomicBool);
 pub struct FrontmostApp(pub Mutex<i32>); // PID of the app that was active when recording started
+pub struct ManualProfileOverride(pub Mutex<Option<String>>); // profile name set explicitly by user this session
 
 pub struct EngineState {
     pub whisper: Mutex<Option<whisper_inference::WhisperEngine>>,
@@ -31,6 +32,72 @@ pub struct EngineState {
 /// Managed state that allows graceful shutdown of background threads.
 pub struct PipelineHandle {
     pub cancelled: Arc<AtomicBool>,
+}
+
+// ---------------------------------------------------------------------------
+// Auto-profile detection
+// ---------------------------------------------------------------------------
+
+/// Returns the bundle ID of the running application with the given PID, or None.
+#[cfg(target_os = "macos")]
+fn bundle_id_for_pid(pid: i32) -> Option<String> {
+    if pid <= 0 { return None; }
+    unsafe {
+        let running_app: cocoa::base::id = msg_send![
+            class!(NSRunningApplication),
+            runningApplicationWithProcessIdentifier: pid
+        ];
+        if running_app.is_null() { return None; }
+        let bundle_id: cocoa::base::id = msg_send![running_app, bundleIdentifier];
+        if bundle_id.is_null() { return None; }
+        let bytes: *const std::os::raw::c_char = msg_send![bundle_id, UTF8String];
+        if bytes.is_null() { return None; }
+        Some(std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn bundle_id_for_pid(_pid: i32) -> Option<String> { None }
+
+/// Maps a bundle ID to a profile name keyword used in `detect_profile_for_pid`.
+fn bundle_id_to_profile_keyword(bundle_id: &str) -> Option<&'static str> {
+    let b = bundle_id.to_lowercase();
+    // Code editors / IDEs
+    if b == "com.apple.dt.xcode"
+        || b == "com.microsoft.vscode"
+        || b == "com.todesktop.230313mzl4w4u92" // Cursor
+        || b.starts_with("com.jetbrains.")
+    {
+        return Some("Code");
+    }
+    // Chat / messaging
+    if b == "com.tinyspeck.slackmacgap"
+        || b == "com.hnc.discord"
+        || b == "com.microsoft.teams2"
+        || b == "ru.keepcoder.telegram"
+    {
+        return Some("Informal");
+    }
+    // Notes / writing
+    if b == "com.apple.notes"
+        || b == "notion.id"
+        || b == "com.evernote.evernote"
+        || b == "md.obsidian"
+    {
+        return Some("Elegant");
+    }
+    // Email
+    if b == "com.apple.mail" || b == "com.microsoft.outlook" {
+        return Some("Elegant");
+    }
+    None
+}
+
+/// Given a PID, returns the best matching profile name (keyword) or None if no match.
+pub fn detect_profile_keyword_for_pid(pid: i32) -> Option<&'static str> {
+    let bundle_id = bundle_id_for_pid(pid)?;
+    log::debug!("Auto-profile: bundle_id={}", bundle_id);
+    bundle_id_to_profile_keyword(&bundle_id)
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +118,58 @@ fn run_llm_refinement(
             raw_text.to_string()
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Profile resolution
+// ---------------------------------------------------------------------------
+
+/// Resolves the system_prompt to use for this dictation.
+/// Priority: manual override > auto-detected by bundle ID > active_profile_id setting.
+fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (String, String) {
+    let conn = db_state.conn.lock().unwrap();
+
+    // Check if auto-detect is enabled in settings
+    let auto_detect_enabled = app
+        .state::<db::SettingsCache>()
+        .get("auto_detect_profile")
+        .map(|v| v != "false")
+        .unwrap_or(true);
+
+    // Check manual override
+    let manual_override = app
+        .state::<ManualProfileOverride>()
+        .0
+        .lock()
+        .unwrap()
+        .clone();
+
+    if let Some(ref name) = manual_override {
+        // User explicitly chose a profile — find it by name
+        if let Ok(profiles) = db::get_profiles(&conn) {
+            if let Some(p) = profiles.into_iter().find(|p| &p.name == name) {
+                return (p.system_prompt, p.name);
+            }
+        }
+    }
+
+    if auto_detect_enabled {
+        let pid = *app.state::<FrontmostApp>().0.lock().unwrap();
+        if let Some(keyword) = detect_profile_keyword_for_pid(pid) {
+            if let Ok(profiles) = db::get_profiles(&conn) {
+                if let Some(p) = profiles.into_iter().find(|p| p.name == keyword) {
+                    log::info!("Auto-profile: matched '{}' for PID {}", keyword, pid);
+                    return (p.system_prompt, p.name);
+                }
+            }
+        }
+    }
+
+    // Fall back to the user's currently selected profile
+    let p = db::get_active_profile(&conn).unwrap_or_default();
+    let name = p.as_ref().map(|x| x.name.clone()).unwrap_or_default();
+    let prompt = p.map(|x| x.system_prompt).unwrap_or_default();
+    (prompt, name)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,13 +363,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                         );
                                         *llama_lock = Some(e);
                                         let llama = llama_lock.as_mut().unwrap();
-                                        let system_prompt = {
-                                            let conn = db_state.conn.lock().unwrap();
-                                            db::get_active_profile(&conn)
-                                                .unwrap_or_default()
-                                                .map(|p| p.system_prompt)
-                                                .unwrap_or_default()
-                                        };
+                                        let (system_prompt, _) = resolve_system_prompt(&app, &db_state);
                                         if system_prompt.is_empty() {
                                             raw_text.clone()
                                         } else {
@@ -272,13 +385,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                             }
                         } else {
                             let llama = llama_lock.as_mut().unwrap();
-                            let (system_prompt, profile_name) = {
-                                let conn = db_state.conn.lock().unwrap();
-                                let p    = db::get_active_profile(&conn).unwrap_or_default();
-                                let name = p.as_ref().map(|x| x.name.clone()).unwrap_or_default();
-                                let prompt = p.map(|x| x.system_prompt).unwrap_or_default();
-                                (prompt, name)
-                            };
+                            let (system_prompt, profile_name) = resolve_system_prompt(&app, &db_state);
                             log::info!(
                                 "LLM Profile: '{}' | Prompt[:80]: {}",
                                 profile_name,

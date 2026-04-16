@@ -846,6 +846,34 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                       </div>
                     </div>
 
+                    {/* Auto-detect profile */}
+                    <div className="p-8 rounded-[2rem] bg-surface-container-low/50 border border-surface-container-high transition-all hover:bg-surface-container-low hover:shadow-lg group/card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover/card:scale-105 transition-transform">
+                            <span className="material-symbols-outlined text-[24px]">auto_awesome</span>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-on-surface uppercase tracking-widest">{t.auto_detect_profile}</h4>
+                            <p className="text-xs text-on-surface-variant mt-1 max-w-sm">{t.auto_detect_profile_hint}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const next = settings.auto_detect_profile !== "true" ? "true" : "false";
+                            updateSetting("auto_detect_profile" as keyof AppSettings, next);
+                          }}
+                          className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                            settings.auto_detect_profile !== "false" ? "bg-primary" : "bg-surface-container-high"
+                          }`}
+                        >
+                          <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                            settings.auto_detect_profile !== "false" ? "translate-x-7" : "translate-x-1"
+                          }`} />
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Language Configuration */}
                     <div className="p-8 rounded-[2rem] bg-surface-container-low/50 border border-surface-container-high transition-all hover:bg-surface-container-low hover:shadow-lg group/card">
                       <div className="flex items-center gap-4 mb-6">
