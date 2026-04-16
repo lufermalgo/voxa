@@ -21,17 +21,27 @@ impl LlamaEngine {
     pub fn new(model_path: &Path, server_path: &Path) -> Result<Self, String> {
         let port = find_free_port();
 
-        let mut process = Command::new(server_path)
-            .arg("--model").arg(model_path)
+        let mut cmd = Command::new(server_path);
+        cmd.arg("--model").arg(model_path)
             .arg("--port").arg(port.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("99")       // offload all layers to GPU (Metal/CUDA); CPU fallback is automatic
-            .arg("--ctx-size").arg("8192")
+            .arg("--ctx-size").arg("4096")
             .arg("--log-disable")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+            .stderr(Stdio::null());
+
+        // Flash Attention and memory locking are Metal-specific optimizations.
+        // --flash-attn: 20-40% speedup on attention layers via Metal.
+        // --mlock: prevents model weights from being paged out under macOS memory pressure.
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            cmd.arg("--flash-attn");
+            cmd.arg("--mlock");
+        }
+
+        let mut process = cmd.spawn()
             .map_err(|e| format!("Failed to start llama-server: {}", e))?;
 
         let client = reqwest::blocking::Client::builder()
