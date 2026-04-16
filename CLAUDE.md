@@ -101,9 +101,28 @@ Uses a native **`CGEventTap`** (`setup_native_event_tap` in `lib.rs`), not Tauri
 
 SQLite at `$APP_DATA_DIR/voxa.db`. Migrations run inline in `db::init_tables` on every startup. The `transformation_profiles` table includes forced UPDATE statements to always overwrite built-in profile prompts to their latest version.
 
+### Recording Session Limits
+
+Voxa enforces a hard session time limit on dictation:
+
+| Environment | Session limit | Max speech | Approx. max words |
+|-------------|--------------|------------|-------------------|
+| **Production** (target) | 7 min | ~5 min | ~750 words |
+| **Testing** (current) | 1 min | ~1 min | ~150 words |
+
+The limit is enforced in the frontend via `useRecordingDuration` (`src/hooks/useRecordingDuration.ts`): it auto-invokes `stop_and_transcribe` at the limit and shows a visual warning at 80% (issue #22).
+
+**Pipeline sizing implications for 5-minute sessions:**
+- Whisper input: ~4,800,000 samples at 16kHz (whisper.cpp handles chunking in 30s windows internally)
+- LLM input: ~1000 tokens transcription — `ctx-size 4096` provides sufficient headroom
+- LLM output: ~900-1000 tokens — `n_predict` **must be ≥ 1200** to avoid truncating long dictations
+- Whisper sampling strategy **must be Greedy** (not BeamSearch) — 10 chunks × 3s/chunk BeamSearch = 30s for Whisper alone on 5-min audio; Greedy brings this to ~7s
+
 ## Key Invariants
 
 - The `LlamaEngine` mutex must NEVER be held while building a new engine (7-8s blocking). Build outside the lock, then re-check inside before storing.
 - Audio silence detection uses **Silero VAD v6** (`vad.rs`), not peak amplitude. `VadEngine` LSTM state must persist across frames within a session — reset only on `StartRecording`. Fallback to peak amplitude if ORT init fails.
 - Whisper `no_speech_thold(0.6)` skips trailing silence segments, preventing `[MÚSICA]`/`[Silencio]` hallucinations. Post-transcription HashSet filter (`hallucination_phrases.txt`, 7257 phrases) catches plain-text hallucinations.
+- Whisper sampling uses **Greedy** (`best_of=1`), not BeamSearch — hallucination protection comes from the filter+threshold, not from beam search. BeamSearch on Metal multiplies latency by 3–5x per 30s audio chunk.
+- LLM `n_predict` must be sized for the max production session: ≥ 1200 tokens (covers ~900-word output from a 5-min dictation). Do not reduce below 1200.
 - The `main` window uses `visible: false` in `tauri.conf.json` — it's shown/hidden programmatically from Rust.
