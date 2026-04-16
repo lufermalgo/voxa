@@ -8,8 +8,9 @@ const DEFAULT_MAX_SECONDS = 60;
 const WARNING_THRESHOLD = 0.8; // 80% → 48s (testing) / 288s (production)
 
 interface RecordingDuration {
-  progress: number;   // 0.0 – 1.0
-  isWarning: boolean; // true when progress >= WARNING_THRESHOLD
+  progress: number;      // 0.0 – 1.0
+  isWarning: boolean;    // true when progress >= WARNING_THRESHOLD
+  timeRemaining: number; // seconds remaining (ceil), 0 when done
 }
 
 /**
@@ -60,5 +61,6 @@ export function useRecordingDuration(
   return {
     progress,
     isWarning: progress >= WARNING_THRESHOLD,
+    timeRemaining: Math.ceil((1 - progress) * maxSeconds),
   };
 }
