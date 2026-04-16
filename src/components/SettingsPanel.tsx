@@ -18,7 +18,7 @@ interface AudioDevice {
 
 export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPanelProps) {
   const t = translations[uiLocale];
-  const { settings, profiles, dictionary, updateSetting, addWord, removeWord, updateProfile, createProfile, deleteProfile, loading } = useSettings();
+  const { settings, profiles, dictionary, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
   const [capturingShortcutFor, setCapturingShortcutFor] = useState<keyof AppSettings | null>(null);
   const capturingRef = useRef<keyof AppSettings | null>(null);
@@ -635,27 +635,63 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                 </div>
 
                 <div className="p-10 rounded-[3rem] bg-surface-container-low/40 space-y-10 group ring-1 ring-white/5">
-                  <div className="flex flex-wrap gap-4">
-                    {dictionary.map(word => (
-                      <span 
-                        key={word} 
-                        className="bg-primary/5 px-6 py-3 rounded-2xl text-[11px] font-black tracking-widest text-primary flex items-center gap-3 hover:bg-primary/10 transition-all shadow-sm"
-                      >
-                        {word}
-                        <button onClick={() => removeWord(word)} className="text-primary/30 hover:text-error transition-all">
-                          <span className="material-symbols-outlined text-[18px]">close</span>
-                        </button>
-                      </span>
-                    ))}
-                    {dictionary.length === 0 && (
-                      <div className="py-10 text-center w-full">
-                        <p className="text-xs text-on-surface-variant/20 italic font-black uppercase tracking-[0.2em]">{t.dictionary_empty}</p>
-                      </div>
-                    )}
-                  </div>
-                  
+                  {dictionaryEntries.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/40 border-b border-on-surface/5">
+                            <th className="text-left py-3 pr-4">{t.word ?? "Word"}</th>
+                            <th className="text-left py-3 pr-4">{t.replacement ?? "Replacement"}</th>
+                            <th className="text-right py-3 pr-4 w-20">{t.usage ?? "Uses"}</th>
+                            <th className="w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dictionaryEntries.map(entry => (
+                            <tr key={entry.word} className="border-b border-on-surface/5 last:border-0 group/row">
+                              <td className="py-3 pr-4 font-bold text-on-surface tracking-wide">{entry.word}</td>
+                              <td className="py-3 pr-4">
+                                <input
+                                  type="text"
+                                  placeholder={t.replacement_placeholder ?? "e.g. correct spelling"}
+                                  defaultValue={entry.replacement_word ?? ""}
+                                  onBlur={(e) => {
+                                    const val = e.target.value.trim() || null;
+                                    updateReplacement(entry.word, val);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                  }}
+                                  className="bg-background/40 px-3 py-1.5 rounded-xl text-on-surface text-xs focus:outline-none ring-1 ring-on-surface/5 focus:ring-primary/20 transition-all placeholder:text-on-surface-variant/20 font-medium w-full"
+                                />
+                              </td>
+                              <td className="py-3 pr-4 text-right">
+                                {entry.usage_count > 0 ? (
+                                  <span className="bg-primary/10 text-primary text-[10px] font-black px-2.5 py-1 rounded-full">
+                                    {entry.usage_count}
+                                  </span>
+                                ) : (
+                                  <span className="text-on-surface-variant/20 text-[10px] font-black">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 text-right">
+                                <button onClick={() => removeWord(entry.word)} className="text-on-surface-variant/20 hover:text-error transition-all opacity-0 group-hover/row:opacity-100">
+                                  <span className="material-symbols-outlined text-[18px]">close</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center w-full">
+                      <p className="text-xs text-on-surface-variant/20 italic font-black uppercase tracking-[0.2em]">{t.dictionary_empty}</p>
+                    </div>
+                  )}
+
                   <div className="flex gap-4 pt-10 bg-gradient-to-t from-transparent via-transparent to-on-surface/[0.02]">
-                    <input 
+                    <input
                       type="text"
                       placeholder={t.dictionary_placeholder}
                       value={newWord}
@@ -668,7 +704,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                       }}
                       className="flex-1 bg-background/40 p-5 rounded-2xl text-on-surface text-sm focus:outline-none ring-1 ring-on-surface/5 focus:ring-primary/20 transition-all placeholder:text-on-surface-variant/20 font-bold"
                     />
-                    <button 
+                    <button
                       onClick={() => { if (newWord.trim()) { addWord(newWord.trim()); setNewWord(""); } }}
                       className="bg-primary text-background px-10 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-primary-hover transition-all active:scale-95 shadow-xl shadow-primary/10"
                     >

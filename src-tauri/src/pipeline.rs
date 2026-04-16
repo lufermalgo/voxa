@@ -329,6 +329,33 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         let _ = app.emit("pipeline-status", "idle");
                         continue;
                     }
+
+                    // --- Vocabulary replacement (before LLM) ---
+                    let raw_text = {
+                        let replacements = {
+                            let conn = db_state.conn.lock().unwrap();
+                            db::get_replacement_entries(&conn).unwrap_or_default()
+                        };
+                        if replacements.is_empty() {
+                            raw_text
+                        } else {
+                            let mut text = raw_text;
+                            for entry in &replacements {
+                                let replacement = entry.replacement_word.as_deref().unwrap_or("");
+                                let pattern = format!(r"(?i)\b{}\b", regex::escape(&entry.word));
+                                if let Ok(re) = regex::Regex::new(&pattern) {
+                                    if re.is_match(&text) {
+                                        text = re.replace_all(&text, replacement).to_string();
+                                        let conn = db_state.conn.lock().unwrap();
+                                        let _ = db::increment_usage_count(&conn, &entry.word);
+                                        log::info!("Vocab replacement: '{}' → '{}'", entry.word, replacement);
+                                    }
+                                }
+                            }
+                            text
+                        }
+                    };
+
                     let _ = app.emit("pipeline-text-raw", &raw_text);
                     let _ = app.emit("pipeline-status", "refining");
 

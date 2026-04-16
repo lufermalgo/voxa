@@ -22,24 +22,33 @@ export interface Profile {
   is_default: boolean;
 }
 
+export interface DictionaryEntry {
+  word: string;
+  replacement_word: string | null;
+  usage_count: number;
+}
+
 export function useSettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [dictionary, setDictionary] = useState<string[]>([]);
+  const [dictionaryEntries, setDictionaryEntries] = useState<DictionaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
-      const [s, p, d] = await Promise.all([
+      const [s, p, d, de] = await Promise.all([
         invoke<AppSettings>("get_settings"),
         invoke<Profile[]>("get_profiles"),
-        invoke<string[]>("get_custom_dictionary")
+        invoke<string[]>("get_custom_dictionary"),
+        invoke<DictionaryEntry[]>("get_dictionary_entries")
       ]);
       setSettings(s);
       setProfiles(p);
       setDictionary(d);
+      setDictionaryEntries(de);
       setError(null);
     } catch (err: any) {
       console.error("Failed to load settings:", err);
@@ -63,8 +72,12 @@ export function useSettings() {
 
     const unlistenDictionary = import("@tauri-apps/api/event").then(({ listen }) =>
       listen("dictionary-updated", async () => {
-        const d = await invoke<string[]>("get_custom_dictionary");
+        const [d, de] = await Promise.all([
+          invoke<string[]>("get_custom_dictionary"),
+          invoke<DictionaryEntry[]>("get_dictionary_entries"),
+        ]);
         setDictionary(d);
+        setDictionaryEntries(de);
       })
     );
 
@@ -97,6 +110,8 @@ export function useSettings() {
     try {
       await invoke("add_to_dictionary", { word });
       setDictionary(prev => [...prev.filter(w => w !== word), word]);
+      const de = await invoke<DictionaryEntry[]>("get_dictionary_entries");
+      setDictionaryEntries(de);
     } catch (err: any) {
       setError(err?.toString() || "Error adding word");
     }
@@ -106,8 +121,20 @@ export function useSettings() {
     try {
       await invoke("remove_from_dictionary", { word });
       setDictionary(prev => prev.filter(w => w !== word));
+      setDictionaryEntries(prev => prev.filter(e => e.word !== word));
     } catch (err: any) {
       setError(err?.toString() || "Error removing word");
+    }
+  };
+
+  const updateReplacement = async (word: string, replacement: string | null) => {
+    try {
+      await invoke("update_replacement_word", { word, replacement: replacement || null });
+      setDictionaryEntries(prev =>
+        prev.map(e => e.word === word ? { ...e, replacement_word: replacement || null } : e)
+      );
+    } catch (err: any) {
+      setError(err?.toString() || "Error updating replacement");
     }
   };
 
@@ -139,18 +166,20 @@ export function useSettings() {
     }
   };
 
-  return { 
-    settings, 
-    profiles, 
-    dictionary, 
-    loading, 
-    error, 
-    updateSetting, 
-    addWord, 
-    removeWord, 
+  return {
+    settings,
+    profiles,
+    dictionary,
+    dictionaryEntries,
+    loading,
+    error,
+    updateSetting,
+    addWord,
+    removeWord,
+    updateReplacement,
     updateProfile,
     createProfile,
     deleteProfile,
-    refresh: fetchSettings 
+    refresh: fetchSettings
   };
 }
