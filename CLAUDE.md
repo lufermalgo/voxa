@@ -52,12 +52,14 @@ The pipeline is driven by an **MPSC channel** (`DictationEvent`) that decouples 
 
 | File | Responsibility |
 |------|----------------|
-| `lib.rs` | Entry point, Tauri setup, all `#[tauri::command]`s, dictation pipeline, native event tap, state structs |
-| `audio.rs` | `AudioEngine` — cpal stream management, mono conversion, 16kHz resampling, normalization, `current_level` AtomicU32 |
-| `whisper_inference.rs` | `WhisperEngine` — wraps `whisper-rs`, hallucination stripping, no-speech threshold |
-| `llama_inference.rs` | `LlamaEngine` — spawns `llama-server` subprocess, ChatML HTTP calls |
+| `lib.rs` | Entry point, Tauri setup, all `#[tauri::command]`s, dictation pipeline, native event tap, state structs. Holds `ManualProfileOverride` and `CursorContext` managed state. |
+| `audio.rs` | `AudioEngine` — cpal stream management, mono conversion, 16kHz resampling, normalization, `current_level` AtomicU32. Integrates `VadEngine` with fallback to peak amplitude. |
+| `vad.rs` | `VadEngine` — Silero VAD v6 via `ort` crate. Persistent LSTM `h`/`c` state + 64-sample context buffer across frames. Smoothing: 2 on / 12 off. Reset on new recording session. |
+| `whisper_inference.rs` | `WhisperEngine` — wraps `whisper-rs`, hallucination stripping via regex + 7257-phrase HashSet (`hallucination_phrases.txt`). |
+| `llama_inference.rs` | `LlamaEngine` — spawns `llama-server` subprocess, ChatML HTTP calls. `refine_text()` accepts `pre_text`/`post_text` cursor context. |
+| `pipeline.rs` | `DictationEvent`, `run_dictation_worker`. Post-Whisper vocabulary replacement (regex, case-insensitive). Cursor context forwarding to LLM. Auto-profile detection by bundle ID. |
 | `models.rs` | `ModelManager` — model download, path resolution, GPU detection |
-| `db.rs` | SQLite via rusqlite — transcripts, settings, transformation profiles |
+| `db.rs` | SQLite via rusqlite — transcripts, settings, transformation profiles. `vocabulary` table has `replacement_word` and `usage_count` columns. |
 | `window_utils.rs` | macOS window positioning utilities |
 
 ### Frontend (`src/components/`)
@@ -102,6 +104,6 @@ SQLite at `$APP_DATA_DIR/voxa.db`. Migrations run inline in `db::init_tables` on
 ## Key Invariants
 
 - The `LlamaEngine` mutex must NEVER be held while building a new engine (7-8s blocking). Build outside the lock, then re-check inside before storing.
-- Audio silence detection uses **peak amplitude** (`peak < 0.05`), not RMS. RMS averages silence and can block real speech at low volume.
-- Whisper `no_speech_thold(0.6)` skips trailing silence segments, preventing `[MÚSICA]`/`[Silencio]` hallucinations.
+- Audio silence detection uses **Silero VAD v6** (`vad.rs`), not peak amplitude. `VadEngine` LSTM state must persist across frames within a session — reset only on `StartRecording`. Fallback to peak amplitude if ORT init fails.
+- Whisper `no_speech_thold(0.6)` skips trailing silence segments, preventing `[MÚSICA]`/`[Silencio]` hallucinations. Post-transcription HashSet filter (`hallucination_phrases.txt`, 7257 phrases) catches plain-text hallucinations.
 - The `main` window uses `visible: false` in `tauri.conf.json` — it's shown/hidden programmatically from Rust.
