@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Locale, translations } from "../i18n";
 import { useAudioLevel } from "../hooks/useAudioLevel";
+import { useRecordingDuration } from "../hooks/useRecordingDuration";
 
 interface RecorderPillProps {
   status: string;
@@ -15,6 +16,7 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
 
 
   const barHeights = useAudioLevel(isRecording);
+  const { progress, isWarning } = useRecordingDuration(isRecording);
 
   const handleStop = () => invoke("stop_and_transcribe");
   const handleCancel = () => invoke("cancel_recording");
@@ -92,6 +94,16 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale }: RecorderP
           >
             <span className="material-symbols-outlined !text-[20px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
           </button>
+
+          {/* Duration indicator — 2px bottom bar growing left→right.
+              Normal (0–80%): white/25 — subtle.
+              Warning (80–100%): amber-400 + pulse — prompts user to wrap up. */}
+          <div
+            className={`absolute bottom-0 left-0 h-[2px] transition-colors duration-700 ${
+              isWarning ? 'bg-amber-400 animate-pulse' : 'bg-white/25'
+            }`}
+            style={{ width: `${progress * 100}%`, transition: 'width 200ms linear, background-color 700ms ease' }}
+          />
         </div>
       </div>
     );
