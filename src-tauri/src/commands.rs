@@ -7,7 +7,7 @@ use rusqlite::params;
 use tauri::Manager;
 use crate::audio::{self, AudioEngine};
 use crate::db::{self, DbState, SettingsCache, Transcript};
-use crate::pipeline::{DictationEvent, DictationSender, RecordingState, FrontmostApp};
+use crate::pipeline::{DictationEvent, DictationSender, ManualProfileOverride, RecordingState, FrontmostApp};
 
 // ---------------------------------------------------------------------------
 // Transcripts
@@ -164,6 +164,17 @@ pub fn delete_profile(
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::delete_profile(&conn, id).map_err(|e| e.to_string())?;
     let _ = app.emit("profiles-updated", ());
+    Ok(())
+}
+
+/// Set (or clear) the manual profile override for this session.
+/// Pass `None` to clear and let auto-detection resume.
+#[tauri::command]
+pub fn set_manual_profile_override(
+    app: tauri::AppHandle,
+    profile_name: Option<String>,
+) -> Result<(), String> {
+    *app.state::<ManualProfileOverride>().0.lock().unwrap() = profile_name;
     Ok(())
 }
 

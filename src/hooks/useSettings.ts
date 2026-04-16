@@ -11,6 +11,7 @@ export interface AppSettings {
   shortcut_paste: string;
   shortcut_cancel: string;
   active_profile_id: string;
+  auto_detect_profile: string;
 }
 
 export interface Profile {
