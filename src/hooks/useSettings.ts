@@ -117,6 +117,17 @@ export function useSettings() {
     }
   };
 
+  const updateReplacement = async (word: string, replacement: string | null) => {
+    try {
+      await invoke("update_replacement_word", { word, replacement: replacement || null });
+      setDictionaryEntries(prev =>
+        prev.map(e => e.word === word ? { ...e, replacement_word: replacement || null } : e)
+      );
+    } catch (err: any) {
+      setError(err?.toString() || "Error updating replacement");
+    }
+  };
+
   const removeWord = async (word: string) => {
     try {
       await invoke("remove_from_dictionary", { word });

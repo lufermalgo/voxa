@@ -12,9 +12,9 @@ use crate::models;
 // State types (pub — used by commands and event_tap)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum DictationEvent {
-    StartRecording,
+    StartRecording { pre_text: String, post_text: String },
     StopRecording,
     CancelRecording,
 }
@@ -32,6 +32,12 @@ pub struct EngineState {
 /// Managed state that allows graceful shutdown of background threads.
 pub struct PipelineHandle {
     pub cancelled: Arc<AtomicBool>,
+}
+
+/// Cursor context captured at recording start — passed to LLM at refinement time.
+pub struct CursorContext {
+    pub pre_text:  Mutex<String>,
+    pub post_text: Mutex<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -108,9 +114,11 @@ fn run_llm_refinement(
     llama: &mut LlamaEngine,
     raw_text: &str,
     system_prompt: &str,
+    pre_text: &str,
+    post_text: &str,
     app: &tauri::AppHandle,
 ) -> String {
-    match llama.refine_text(raw_text, system_prompt) {
+    match llama.refine_text(raw_text, system_prompt, pre_text, post_text) {
         Ok(refined) => refined,
         Err(e) => {
             log::error!("LLM refinement failed: {}", e);
@@ -185,7 +193,13 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
             }
 
             match event {
-                DictationEvent::StartRecording => {
+                DictationEvent::StartRecording { pre_text, post_text } => {
+                    // Store cursor context so StopRecording can pass it to the LLM
+                    {
+                        let ctx = app.state::<CursorContext>();
+                        *ctx.pre_text.lock().unwrap()  = pre_text;
+                        *ctx.post_text.lock().unwrap() = post_text;
+                    }
                     if let Some(audio_engine) = app.try_state::<AudioEngine>() {
                         let mic_id = app.state::<SettingsCache>().get("mic_id");
                         match audio::setup_stream(&audio_engine, mic_id) {
@@ -342,6 +356,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                             let mut text = raw_text;
                             for entry in &replacements {
                                 let replacement = entry.replacement_word.as_deref().unwrap_or("");
+                                // Case-insensitive word-boundary replacement
                                 let pattern = format!(r"(?i)\b{}\b", regex::escape(&entry.word));
                                 if let Ok(re) = regex::Regex::new(&pattern) {
                                     if re.is_match(&text) {
@@ -358,6 +373,20 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
 
                     let _ = app.emit("pipeline-text-raw", &raw_text);
                     let _ = app.emit("pipeline-status", "refining");
+
+                    // Read cursor context captured at StartRecording
+                    let (cursor_pre, cursor_post) = {
+                        let ctx = app.state::<CursorContext>();
+                        let pre  = ctx.pre_text.lock().unwrap().clone();
+                        let post = ctx.post_text.lock().unwrap().clone();
+                        (pre, post)
+                    };
+                    if !cursor_pre.is_empty() || !cursor_post.is_empty() {
+                        log::debug!(
+                            "Cursor context — pre: {} chars, post: {} chars",
+                            cursor_pre.len(), cursor_post.len()
+                        );
+                    }
 
                     // --- LLM refinement ---
                     let refined_text = {
@@ -395,7 +424,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                             raw_text.clone()
                                         } else {
                                             let t_llm = std::time::Instant::now();
-                                            let result = run_llm_refinement(llama, &raw_text, &system_prompt, &app);
+                                            let result = run_llm_refinement(llama, &raw_text, &system_prompt, &cursor_pre, &cursor_post, &app);
                                             log::info!(
                                                 "LLM: {:.2}s  in={} chars  out={} chars",
                                                 t_llm.elapsed().as_secs_f64(), raw_text.len(), result.len()
@@ -422,7 +451,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 raw_text.clone()
                             } else {
                                 let t_llm  = std::time::Instant::now();
-                                let result = run_llm_refinement(llama, &raw_text, &system_prompt, &app);
+                                let result = run_llm_refinement(llama, &raw_text, &system_prompt, &cursor_pre, &cursor_post, &app);
                                 log::info!(
                                     "LLM: {:.2}s  in={} chars  out={} chars",
                                     t_llm.elapsed().as_secs_f64(), raw_text.len(), result.len()

@@ -67,17 +67,41 @@ impl LlamaEngine {
 
     /// Sends the transcription + profile system prompt to the running llama-server
     /// and returns the transformed text.
-    pub fn refine_text(&mut self, text: &str, system_prompt: &str) -> Result<String, String> {
+    ///
+    /// `pre_text` and `post_text` are the text immediately before/after the cursor
+    /// in the target application at the time recording started. When non-empty they
+    /// are injected into the user message so the model can match capitalization, tone,
+    /// and spacing to the surrounding document context. Pass empty strings to get the
+    /// same behaviour as before this feature was added.
+    pub fn refine_text(
+        &mut self,
+        text: &str,
+        system_prompt: &str,
+        pre_text: &str,
+        post_text: &str,
+    ) -> Result<String, String> {
         if system_prompt.is_empty() {
             return Ok(text.to_string());
         }
+
+        // Build the user message. When cursor context is available, wrap the
+        // transcription in XML tags alongside the surrounding text so the model
+        // can match capitalization, spacing, and tone to the document.
+        let user_message = if pre_text.is_empty() && post_text.is_empty() {
+            text.to_string()
+        } else {
+            format!(
+                "<before_text>{}</before_text>\n<transcription>{}</transcription>\n<after_text>{}</after_text>\n\nOutput ONLY the formatted transcription that should be inserted at the cursor. Match capitalization, spacing, and tone to the surrounding text. Do not include the before_text or after_text in your response.",
+                pre_text, text, post_text
+            )
+        };
 
         // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models.
         // The language guard prevents Qwen from translating the output when the system prompt
         // is written in a different language than the user's dictation.
         let prompt = format!(
             "<|im_start|>system\nIMPORTANT: Always respond in the SAME language as the user's text. Never translate.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-            system_prompt, text
+            system_prompt, user_message
         );
 
         let body = serde_json::json!({

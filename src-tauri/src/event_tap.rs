@@ -180,6 +180,120 @@ pub fn activate_app_by_pid(pid: i32) {
     }
 }
 
+/// Reads the text surrounding the cursor in the frontmost application via the
+/// macOS Accessibility API. Returns `(pre_text, post_text)` — up to 200 chars
+/// before and after the cursor. Returns empty strings on any failure.
+#[cfg(target_os = "macos")]
+pub fn get_cursor_context() -> (String, String) {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    // AXUIElement / AXValue types — declared locally to avoid pulling in a full AX crate.
+    type AXUIElementRef = *mut std::os::raw::c_void;
+    type AXValueRef    = *mut std::os::raw::c_void;
+    type CFTypeRef     = *mut std::os::raw::c_void;
+    type AXError       = i32;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateSystemWide() -> AXUIElementRef;
+        fn AXUIElementCopyAttributeValue(
+            element: AXUIElementRef,
+            attribute: core_foundation::string::CFStringRef,
+            value: *mut CFTypeRef,
+        ) -> AXError;
+        fn AXValueGetValue(value: AXValueRef, ax_type: i32, value_ptr: *mut std::os::raw::c_void) -> bool;
+        fn CFRelease(cf: CFTypeRef);
+    }
+
+    // CFRange mirrors NSRange (location + length), both are usize on 64-bit.
+    #[repr(C)]
+    #[derive(Default, Debug, Clone, Copy)]
+    struct CFRange {
+        location: isize,
+        length:   isize,
+    }
+
+    const AX_ERROR_SUCCESS: AXError = 0;
+    // AXValueType for CFRange is 3
+    const AX_VALUE_TYPE_CFRANGE: i32 = 3;
+
+    unsafe {
+        // 1. Get focused UI element
+        let system_wide = AXUIElementCreateSystemWide();
+        if system_wide.is_null() { return (String::new(), String::new()); }
+
+        let attr_focused = CFString::new("AXFocusedUIElement");
+        let mut focused_ref: CFTypeRef = std::ptr::null_mut();
+        let err = AXUIElementCopyAttributeValue(
+            system_wide,
+            attr_focused.as_concrete_TypeRef(),
+            &mut focused_ref,
+        );
+        CFRelease(system_wide as _);
+        if err != AX_ERROR_SUCCESS || focused_ref.is_null() {
+            return (String::new(), String::new());
+        }
+        let focused_element = focused_ref as AXUIElementRef;
+
+        // 2. Get the full text value of the focused element
+        let attr_value = CFString::new("AXValue");
+        let mut value_ref: CFTypeRef = std::ptr::null_mut();
+        let err = AXUIElementCopyAttributeValue(
+            focused_element,
+            attr_value.as_concrete_TypeRef(),
+            &mut value_ref,
+        );
+        if err != AX_ERROR_SUCCESS || value_ref.is_null() {
+            CFRelease(focused_ref);
+            return (String::new(), String::new());
+        }
+        // value_ref is a CFStringRef — wrap it for safe handling
+        let full_text = {
+            let cf_str = CFString::wrap_under_create_rule(value_ref as core_foundation::string::CFStringRef);
+            cf_str.to_string()
+        };
+
+        // 3. Get selected text range (cursor position)
+        let attr_range = CFString::new("AXSelectedTextRange");
+        let mut range_ref: CFTypeRef = std::ptr::null_mut();
+        let err = AXUIElementCopyAttributeValue(
+            focused_element,
+            attr_range.as_concrete_TypeRef(),
+            &mut range_ref,
+        );
+        CFRelease(focused_ref);
+        if err != AX_ERROR_SUCCESS || range_ref.is_null() {
+            return (String::new(), String::new());
+        }
+
+        let mut range = CFRange::default();
+        let got = AXValueGetValue(range_ref as AXValueRef, AX_VALUE_TYPE_CFRANGE, &mut range as *mut _ as *mut _);
+        CFRelease(range_ref);
+        if !got {
+            return (String::new(), String::new());
+        }
+
+        // 4. Slice up to 200 chars before/after cursor position (char-boundary safe)
+        let cursor_pos = range.location.max(0) as usize;
+        let chars: Vec<char> = full_text.chars().collect();
+        let total = chars.len();
+
+        let pre_start = cursor_pos.saturating_sub(200);
+        let pre_text: String = chars[pre_start..cursor_pos.min(total)].iter().collect();
+
+        let post_end = (cursor_pos + 200).min(total);
+        let post_text: String = chars[cursor_pos.min(total)..post_end].iter().collect();
+
+        (pre_text, post_text)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_cursor_context() -> (String, String) {
+    (String::new(), String::new())
+}
+
 /// Sends Cmd+V to the currently active application via CGEvent.
 #[cfg(target_os = "macos")]
 pub fn simulate_paste() {
@@ -257,7 +371,8 @@ pub unsafe extern "C" fn native_tap_callback(
                         .load(Ordering::SeqCst);
                     if !is_recording {
                         matched = true;
-                        event_to_send = Some(DictationEvent::StartRecording);
+                        let (pre, post) = get_cursor_context();
+                        event_to_send = Some(DictationEvent::StartRecording { pre_text: pre, post_text: post });
                     } else {
                         return std::ptr::null_mut();
                     }
@@ -273,7 +388,8 @@ pub unsafe extern "C" fn native_tap_callback(
                     event_to_send = if is_recording {
                         Some(DictationEvent::StopRecording)
                     } else {
-                        Some(DictationEvent::StartRecording)
+                        let (pre, post) = get_cursor_context();
+                        Some(DictationEvent::StartRecording { pre_text: pre, post_text: post })
                     };
                 } else if current_accel == shortcuts.paste {
                     matched = true;
@@ -314,7 +430,7 @@ pub unsafe extern "C" fn native_tap_callback(
                     if let Some(ev) = event_to_send {
                         if let Ok(tx) = app_handle.state::<DictationSender>().0.lock() {
                             match ev {
-                                DictationEvent::StartRecording => {
+                                DictationEvent::StartRecording { .. } => {
                                     app_handle
                                         .state::<RecordingState>()
                                         .0

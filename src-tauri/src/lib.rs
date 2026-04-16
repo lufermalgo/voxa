@@ -21,7 +21,7 @@ mod window_utils;
 use crate::audio::AudioEngine;
 use crate::db::{DbState, SettingsCache};
 use crate::pipeline::{
-    DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
+    CursorContext, DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
     PipelineHandle, RecordingState,
 };
 use crate::shortcuts::{NativeShortcuts, NATIVE_SHORTCUTS};
@@ -111,6 +111,10 @@ pub fn run() {
             app.manage(FrontmostApp(Mutex::new(0i32)));
             app.manage(ManualProfileOverride(Mutex::new(None)));
             app.manage(PipelineHandle { cancelled: Arc::new(AtomicBool::new(false)) });
+            app.manage(CursorContext {
+                pre_text:  Mutex::new(String::new()),
+                post_text: Mutex::new(String::new()),
+            });
 
             // Pre-warm LlamaEngine in background (build OUTSIDE the mutex — see invariants)
             let app_warmup = app.handle().clone();
