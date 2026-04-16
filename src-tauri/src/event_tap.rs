@@ -224,8 +224,263 @@ pub fn get_app_info_for_pid(pid: i32) -> Option<crate::pipeline::AppInfo> {
             Some(base64::engine::general_purpose::STANDARD.encode(slice))
         })();
 
-        Some(crate::pipeline::AppInfo { pid, name, icon_base64 })
+        // Bundle ID — needed to detect browsers
+        let bundle_id_str: Option<String> = {
+            let bid_ns: cocoa::base::id = msg_send![running_app, bundleIdentifier];
+            if bid_ns.is_null() { None } else {
+                let bytes: *const std::os::raw::c_char = msg_send![bid_ns, UTF8String];
+                if bytes.is_null() { None } else {
+                    Some(std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned())
+                }
+            }
+        };
+
+        let mut info = crate::pipeline::AppInfo { pid, name, icon_base64 };
+
+        // Browser override: replace app name/icon with active web app identity
+        if let Some(ref bid) = bundle_id_str {
+            if is_browser_bundle_id(bid) {
+                if let Some(url) = get_browser_tab_url(pid, bid) {
+                    if let Some(domain) = domain_from_url(&url) {
+                        if let Some(web_name) = web_app_name_from_domain(&domain) {
+                            info.name = web_name.to_string();
+                        }
+                        if let Some(favicon) = get_favicon_from_browser_cache(&domain, bid) {
+                            info.icon_base64 = Some(favicon);
+                        }
+                    }
+                }
+            }
+        }
+
+        Some(info)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Browser tab URL detection
+// ---------------------------------------------------------------------------
+
+/// Returns true if the given bundle ID belongs to a supported browser.
+#[cfg(target_os = "macos")]
+pub fn is_browser_bundle_id(bundle_id: &str) -> bool {
+    matches!(bundle_id,
+        "com.apple.Safari" | "com.google.Chrome" | "com.brave.Browser" |
+        "company.thebrowser.Browser" | "com.microsoft.edgemac" |
+        "org.mozilla.firefox" | "org.chromium.Chromium"
+    )
+}
+
+/// Reads the active tab URL from a known browser via the macOS Accessibility API.
+/// Returns None gracefully on any failure (missing permissions, unusual browser state, etc).
+#[cfg(target_os = "macos")]
+pub fn get_browser_tab_url(pid: i32, bundle_id: &str) -> Option<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    type Ref = *mut std::os::raw::c_void;
+    type AXError = i32;
+    const AX_OK: AXError = 0;
+
+    #[allow(clashing_extern_declarations)]
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> Ref;
+        fn AXUIElementCopyAttributeValue(elem: Ref, attr: Ref, val: *mut Ref) -> AXError;
+        fn CFRelease(cf: Ref);
+        fn CFRetain(cf: Ref) -> Ref;
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFArrayGetCount(arr: Ref) -> isize;
+        fn CFArrayGetValueAtIndex(arr: Ref, idx: isize) -> Ref;
+        fn CFGetTypeID(cf: Ref) -> usize;
+        fn CFStringGetTypeID() -> usize;
+    }
+
+    if pid <= 0 { return None; }
+
+    // Read a string AX attribute. Returns None on type mismatch or missing value.
+    let ax_str = |elem: Ref, attr: &str| -> Option<String> {
+        unsafe {
+            let a = CFString::new(attr);
+            let mut val: Ref = std::ptr::null_mut();
+            if AXUIElementCopyAttributeValue(elem, a.as_concrete_TypeRef() as Ref, &mut val) != AX_OK
+                || val.is_null() { return None; }
+            if CFGetTypeID(val) != CFStringGetTypeID() { CFRelease(val); return None; }
+            let s = CFString::wrap_under_create_rule(val as core_foundation::string::CFStringRef).to_string();
+            if s.is_empty() { None } else { Some(s) }
+        }
+    };
+
+    // Get a child AX element (retained — caller must CFRelease).
+    let ax_elem = |parent: Ref, attr: &str| -> Option<Ref> {
+        unsafe {
+            let a = CFString::new(attr);
+            let mut val: Ref = std::ptr::null_mut();
+            if AXUIElementCopyAttributeValue(parent, a.as_concrete_TypeRef() as Ref, &mut val) != AX_OK
+                || val.is_null() { return None; }
+            Some(val)
+        }
+    };
+
+    // Get children as individually-retained Refs (caller must CFRelease each).
+    let ax_children = |parent: Ref| -> Vec<Ref> {
+        unsafe {
+            let a = CFString::new("AXChildren");
+            let mut arr: Ref = std::ptr::null_mut();
+            if AXUIElementCopyAttributeValue(parent, a.as_concrete_TypeRef() as Ref, &mut arr) != AX_OK
+                || arr.is_null() { return vec![]; }
+            let count = CFArrayGetCount(arr);
+            let mut out = Vec::with_capacity(count as usize);
+            for i in 0..count {
+                let child = CFArrayGetValueAtIndex(arr, i);
+                if !child.is_null() { out.push(CFRetain(child)); }
+            }
+            CFRelease(arr);
+            out
+        }
+    };
+
+    unsafe {
+        let app = AXUIElementCreateApplication(pid);
+        if app.is_null() { return None; }
+
+        let b = bundle_id.to_lowercase();
+        let window = ax_elem(app, "AXFocusedWindow");
+        CFRelease(app);
+        let window = window?;
+
+        // Safari exposes AXDocument on the focused window — fast and reliable.
+        if b == "com.apple.safari" {
+            let url = ax_str(window, "AXDocument");
+            CFRelease(window);
+            return url;
+        }
+
+        // Chromium + Firefox: BFS through the UI tree to find the URL bar.
+        // Queue items are retained references we own and must CFRelease.
+        let mut queue: Vec<(Ref, u32)> = vec![(window, 7)];
+        let mut found: Option<String> = None;
+
+        while let Some((elem, depth)) = queue.pop() {
+            if found.is_none() {
+                let role = ax_str(elem, "AXRole").unwrap_or_default();
+
+                // Skip web content — avoids traversing the entire page DOM.
+                if role != "AXWebArea" {
+                    if role == "AXTextField" || role == "AXComboBox" {
+                        let id = ax_str(elem, "AXIdentifier").unwrap_or_default();
+                        let id_lc = id.to_lowercase();
+                        if id_lc.contains("address") || id_lc.contains("url") || id == "urlbar-input" {
+                            if let Some(val) = ax_str(elem, "AXValue") {
+                                if val.starts_with("http://") || val.starts_with("https://") {
+                                    found = Some(val);
+                                }
+                            }
+                        }
+                    }
+                    if found.is_none() && depth > 0 {
+                        for child in ax_children(elem) {
+                            queue.push((child, depth - 1));
+                        }
+                    }
+                }
+            }
+            CFRelease(elem);
+        }
+
+        found
+    }
+}
+
+/// Extracts the hostname from a URL, stripping scheme, www. prefix, and port.
+/// "https://mail.google.com/mail/u/0/" → "mail.google.com"
+pub fn domain_from_url(url: &str) -> Option<String> {
+    let without_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let host = without_scheme.split('/').next()?;
+    let host_no_port = host.split(':').next()?;
+    let domain = host_no_port.strip_prefix("www.").unwrap_or(host_no_port);
+    if domain.is_empty() { None } else { Some(domain.to_lowercase()) }
+}
+
+/// Maps a known web app domain to a human-readable display name.
+pub fn web_app_name_from_domain(domain: &str) -> Option<&'static str> {
+    let d = domain;
+    if d == "mail.google.com"                            { return Some("Gmail"); }
+    if d == "docs.google.com"                            { return Some("Google Docs"); }
+    if d == "sheets.google.com"                          { return Some("Google Sheets"); }
+    if d == "slides.google.com"                          { return Some("Google Slides"); }
+    if d == "calendar.google.com"                        { return Some("Google Calendar"); }
+    if d == "drive.google.com"                           { return Some("Google Drive"); }
+    if d == "notion.so" || d.ends_with(".notion.so")     { return Some("Notion"); }
+    if d == "github.com" || d.ends_with(".github.com")   { return Some("GitHub"); }
+    if d == "linear.app" || d.ends_with(".linear.app")   { return Some("Linear"); }
+    if d.ends_with(".slack.com") || d == "app.slack.com" { return Some("Slack"); }
+    if d == "discord.com" || d.ends_with(".discord.com") { return Some("Discord"); }
+    if d == "figma.com"  || d.ends_with(".figma.com")    { return Some("Figma"); }
+    if d == "twitter.com" || d == "x.com"                { return Some("X"); }
+    if d == "linkedin.com" || d.ends_with(".linkedin.com") { return Some("LinkedIn"); }
+    if d == "reddit.com"  || d.ends_with(".reddit.com")  { return Some("Reddit"); }
+    if d == "youtube.com" || d.ends_with(".youtube.com") { return Some("YouTube"); }
+    if d == "claude.ai"                                  { return Some("Claude"); }
+    if d == "chat.openai.com" || d == "chatgpt.com"      { return Some("ChatGPT"); }
+    if d.contains("outlook.")  || d == "outlook.com"     { return Some("Outlook"); }
+    if d.ends_with(".atlassian.net") && d.starts_with("jira") { return Some("Jira"); }
+    if d.ends_with(".atlassian.net")                     { return Some("Confluence"); }
+    if d.contains("confluence")                          { return Some("Confluence"); }
+    if d == "coda.io" || d.ends_with(".coda.io")         { return Some("Coda"); }
+    if d == "airtable.com"                               { return Some("Airtable"); }
+    if d == "trello.com"                                 { return Some("Trello"); }
+    if d == "miro.com" || d.ends_with(".miro.com")       { return Some("Miro"); }
+    if d == "loom.com"  || d.ends_with(".loom.com")      { return Some("Loom"); }
+    None
+}
+
+/// Reads the favicon for a domain from the browser's local SQLite favicon cache.
+/// Only supports Chromium-family browsers (Chrome, Brave, Edge, Arc).
+/// Returns None silently on any failure — DB locked, not found, wrong schema, etc.
+#[cfg(target_os = "macos")]
+pub fn get_favicon_from_browser_cache(domain: &str, bundle_id: &str) -> Option<String> {
+    use base64::Engine as _;
+
+    let home = std::env::var("HOME").ok()?;
+    let b = bundle_id.to_lowercase();
+
+    let db_str = if b == "com.google.chrome" {
+        format!("{}/Library/Application Support/Google/Chrome/Default/Favicons", home)
+    } else if b == "com.brave.browser" {
+        format!("{}/Library/Application Support/BraveSoftware/Brave-Browser/Default/Favicons", home)
+    } else if b == "com.microsoft.edgemac" {
+        format!("{}/Library/Application Support/Microsoft Edge/Default/Favicons", home)
+    } else if b == "company.thebrowser.browser" {
+        format!("{}/Library/Application Support/Arc/User Data/Default/Favicons", home)
+    } else {
+        return None;
+    };
+
+    if !std::path::Path::new(&db_str).exists() { return None; }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_str,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ).ok()?;
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(100));
+
+    let pattern = format!("%{}%", domain);
+    let data: Option<Vec<u8>> = conn.query_row(
+        "SELECT fb.image_data \
+         FROM icon_mapping im \
+         JOIN favicon_bitmaps fb ON im.icon_id = fb.icon_id \
+         WHERE im.page_url LIKE ?1 \
+         ORDER BY fb.width DESC LIMIT 1",
+        rusqlite::params![pattern],
+        |row| row.get(0),
+    ).ok();
+
+    data.map(|d| base64::engine::general_purpose::STANDARD.encode(&d))
 }
 
 /// Re-activates an app by PID using NSRunningApplication.
