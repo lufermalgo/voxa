@@ -21,7 +21,15 @@ pub enum DictationEvent {
 
 pub struct DictationSender(pub Mutex<mpsc::Sender<DictationEvent>>);
 pub struct RecordingState(pub AtomicBool);
-pub struct FrontmostApp(pub Mutex<i32>); // PID of the app that was active when recording started
+/// Metadata about the app that was active when recording started.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct AppInfo {
+    pub pid: i32,
+    pub name: String,
+    pub icon_base64: Option<String>,
+}
+
+pub struct FrontmostApp(pub Mutex<AppInfo>);
 pub struct ManualProfileOverride(pub Mutex<Option<String>>); // profile name set explicitly by user this session
 
 pub struct EngineState {
@@ -162,7 +170,7 @@ fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (Str
     }
 
     if auto_detect_enabled {
-        let pid = *app.state::<FrontmostApp>().0.lock().unwrap();
+        let pid = app.state::<FrontmostApp>().0.lock().unwrap().pid;
         if let Some(keyword) = detect_profile_keyword_for_pid(pid) {
             if let Ok(profiles) = db::get_profiles(&conn) {
                 if let Some(p) = profiles.into_iter().find(|p| p.name == keyword) {
@@ -212,7 +220,13 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                             Ok(_) => {
                                 #[cfg(target_os = "macos")]
                                 if let Some(pid) = crate::event_tap::get_frontmost_app_pid() {
-                                    *app.state::<FrontmostApp>().0.lock().unwrap() = pid;
+                                    let info = crate::event_tap::get_app_info_for_pid(pid)
+                                        .unwrap_or(AppInfo { pid, name: String::new(), icon_base64: None });
+                                    let _ = app.emit("app-detected", serde_json::json!({
+                                        "name": info.name,
+                                        "icon": info.icon_base64,
+                                    }));
+                                    *app.state::<FrontmostApp>().0.lock().unwrap() = info;
                                 }
                                 app.state::<RecordingState>().0.store(true, Ordering::SeqCst);
                                 if let Some(win) = app.get_webview_window("main") {
@@ -504,7 +518,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
 
                     #[cfg(target_os = "macos")]
                     {
-                        let target_pid = *app.state::<FrontmostApp>().0.lock().unwrap();
+                        let target_pid = app.state::<FrontmostApp>().0.lock().unwrap().pid;
                         crate::event_tap::activate_app_by_pid(target_pid);
                         std::thread::sleep(std::time::Duration::from_millis(80));
                         crate::event_tap::simulate_paste();

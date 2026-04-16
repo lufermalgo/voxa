@@ -165,6 +165,69 @@ pub fn get_frontmost_app_pid() -> Option<i32> {
     }
 }
 
+/// Returns the app name, and icon (base64 PNG, 32×32) for the given PID.
+#[cfg(target_os = "macos")]
+pub fn get_app_info_for_pid(pid: i32) -> Option<crate::pipeline::AppInfo> {
+    use base64::Engine as _;
+    if pid <= 0 { return None; }
+    unsafe {
+        let running_app: cocoa::base::id = msg_send![
+            class!(NSRunningApplication),
+            runningApplicationWithProcessIdentifier: pid
+        ];
+        if running_app.is_null() { return None; }
+
+        // Localized name
+        let name_ns: cocoa::base::id = msg_send![running_app, localizedName];
+        let name = if name_ns.is_null() {
+            String::new()
+        } else {
+            let bytes: *const std::os::raw::c_char = msg_send![name_ns, UTF8String];
+            if bytes.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned()
+            }
+        };
+
+        // Icon: NSImage → TIFF → NSBitmapImageRep → PNG → base64
+        let icon_base64 = (|| -> Option<String> {
+            let icon: cocoa::base::id = msg_send![running_app, icon];
+            if icon.is_null() { return None; }
+
+            let size = cocoa::foundation::NSSize { width: 32.0, height: 32.0 };
+            let _: () = msg_send![icon, setSize: size];
+
+            let tiff: cocoa::base::id = msg_send![icon, TIFFRepresentation];
+            if tiff.is_null() { return None; }
+
+            let bitmap: cocoa::base::id = msg_send![
+                class!(NSBitmapImageRep),
+                imageRepWithData: tiff
+            ];
+            if bitmap.is_null() { return None; }
+
+            let props: cocoa::base::id = msg_send![class!(NSDictionary), dictionary];
+            // NSPNGFileType = 4
+            let png_data: cocoa::base::id = msg_send![
+                bitmap,
+                representationUsingType: 4u64
+                properties: props
+            ];
+            if png_data.is_null() { return None; }
+
+            let length: usize = msg_send![png_data, length];
+            let bytes: *const u8 = msg_send![png_data, bytes];
+            if bytes.is_null() || length == 0 { return None; }
+
+            let slice = std::slice::from_raw_parts(bytes, length);
+            Some(base64::engine::general_purpose::STANDARD.encode(slice))
+        })();
+
+        Some(crate::pipeline::AppInfo { pid, name, icon_base64 })
+    }
+}
+
 /// Re-activates an app by PID using NSRunningApplication.
 #[cfg(target_os = "macos")]
 pub fn activate_app_by_pid(pid: i32) {

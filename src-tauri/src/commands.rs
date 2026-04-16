@@ -247,7 +247,7 @@ pub fn set_window_interactive(app: tauri::AppHandle, interactive: bool) -> Resul
 pub fn stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let pid = *app.state::<FrontmostApp>().0.lock().unwrap();
+        let pid = app.state::<FrontmostApp>().0.lock().unwrap().pid;
         crate::event_tap::activate_app_by_pid(pid);
     }
     let sender = app.state::<DictationSender>();

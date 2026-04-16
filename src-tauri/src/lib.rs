@@ -109,7 +109,7 @@ pub fn run() {
             let (tx, rx) = mpsc::channel::<DictationEvent>();
             app.manage(DictationSender(Mutex::new(tx)));
             app.manage(RecordingState(AtomicBool::new(false)));
-            app.manage(FrontmostApp(Mutex::new(0i32)));
+            app.manage(FrontmostApp(Mutex::new(pipeline::AppInfo::default())));
             app.manage(ManualProfileOverride(Mutex::new(None)));
             app.manage(PipelineHandle { cancelled: Arc::new(AtomicBool::new(false)) });
             app.manage(CursorContext {
