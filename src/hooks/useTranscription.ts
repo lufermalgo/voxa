@@ -4,15 +4,23 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type PipelineStatus = "idle" | "recording" | "processing" | "refining" | "loading_whisper" | "loading_llama" | "done";
 
+export interface AppInfo {
+  name: string;
+  icon: string | null;
+}
+
 export function useTranscription() {
   const [status, setStatus] = useState<PipelineStatus>("idle");
   const [rawText, setRawText] = useState("");
   const [refinedText, setRefinedText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {
     const unlistenStatus = listen<string>("pipeline-status", (event) => {
-      setStatus(event.payload as PipelineStatus);
+      const s = event.payload as PipelineStatus;
+      setStatus(s);
+      if (s !== "recording") setAppInfo(null);
     });
 
     const unlistenRaw = listen<string>("pipeline-text-raw", (event) => {
@@ -34,11 +42,16 @@ export function useTranscription() {
       setTimeout(() => setError(null), 5000);
     });
 
+    const unlistenAppDetected = listen<AppInfo>("app-detected", (event) => {
+      setAppInfo(event.payload);
+    });
+
     return () => {
       unlistenStatus.then((f) => f());
       unlistenRaw.then((f) => f());
       unlistenResults.then((f) => f());
       unlistenError.then((f) => f());
+      unlistenAppDetected.then((f) => f());
     };
   }, []);
 
@@ -50,5 +63,5 @@ export function useTranscription() {
     }
   };
 
-  return { status, rawText, refinedText, error, downloadModels };
+  return { status, rawText, refinedText, error, appInfo, downloadModels };
 }
