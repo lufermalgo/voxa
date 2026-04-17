@@ -28,7 +28,7 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, pr
   const t = translations[uiLocale];
 
   const barHeights = useAudioLevel(isRecording);
-  const { progress, isWarning, timeRemaining } = useRecordingDuration(isRecording);
+  const { progress, isWarning, isNearEnd, timeRemaining } = useRecordingDuration(isRecording);
 
   const prevIsWarningRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -100,8 +100,8 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, pr
   return (
     <div className={`relative flex items-center justify-center ${isIdle ? "pointer-events-none" : ""}`}>
 
-      {/* Warning card — floats above pill via absolute positioning */}
-      {isWarning && isRecording && (
+      {/* Warning card — floats above pill, appears at 90% (isNearEnd) */}
+      {isNearEnd && isRecording && (
         <div className="absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 w-[300px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-400">
           <div className="relative rounded-[20px] overflow-hidden bg-[#0A0A0A]/90 backdrop-blur-[40px] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
             <div className="h-[3px] w-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600" />

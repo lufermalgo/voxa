@@ -5,11 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 // Change DEFAULT_MAX_SECONDS to 360 once manual tests confirm the pipeline
 // handles long recordings correctly end-to-end.
 const DEFAULT_MAX_SECONDS = 60;
-const WARNING_THRESHOLD = 0.8; // 80% → 48s (testing) / 288s (production)
+const WARNING_THRESHOLD = 0.8; // 80% → pill turns amber
+const POPUP_THRESHOLD  = 0.9; // 90% → warning card appears
 
 interface RecordingDuration {
   progress: number;      // 0.0 – 1.0
-  isWarning: boolean;    // true when progress >= WARNING_THRESHOLD
+  isWarning: boolean;    // true when progress >= WARNING_THRESHOLD (pill turns amber)
+  isNearEnd: boolean;    // true when progress >= POPUP_THRESHOLD (popup card appears)
   timeRemaining: number; // seconds remaining (ceil), 0 when done
 }
 
@@ -61,6 +63,7 @@ export function useRecordingDuration(
   return {
     progress,
     isWarning: progress >= WARNING_THRESHOLD,
+    isNearEnd: progress >= POPUP_THRESHOLD,
     timeRemaining: Math.ceil((1 - progress) * maxSeconds),
   };
 }
