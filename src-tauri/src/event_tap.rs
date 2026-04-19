@@ -236,16 +236,17 @@ pub fn get_app_info_for_pid(pid: i32) -> Option<crate::pipeline::AppInfo> {
             }
         };
 
-        let mut info = crate::pipeline::AppInfo { pid, name, icon_base64 };
+        let mut info = crate::pipeline::AppInfo { pid, name, icon_base64, domain: None };
 
         // Browser override: replace app name/icon with active web app identity
         if let Some(ref bid) = bundle_id_str {
             if is_browser_bundle_id(bid) {
                 if let Some(url) = get_browser_tab_url(pid, bid) {
                     if let Some(domain) = domain_from_url(&url) {
-                        if let Some(web_name) = web_app_name_from_domain(&domain) {
+                        if let Some((web_name, _)) = classify_domain(&domain) {
                             info.name = web_name.to_string();
                         }
+                        info.domain = Some(domain.clone());
                         if let Some(favicon) = get_favicon_from_browser_cache(&domain, bid) {
                             info.icon_base64 = Some(favicon);
                         }
@@ -444,39 +445,51 @@ pub fn domain_from_url(url: &str) -> Option<String> {
     if domain.is_empty() || !domain.contains('.') { None } else { Some(domain.to_lowercase()) }
 }
 
+/// A single source of truth mapping a browser domain to its display name and profile keyword.
+/// Returns `(display_name, profile_keyword)` or `None` if the domain is unknown.
+pub fn classify_domain(domain: &str) -> Option<(&'static str, &'static str)> {
+    let d = domain;
+    // --- Code / dev / AI ---
+    if d == "github.com" || d.ends_with(".github.com")          { return Some(("GitHub",     "Code")); }
+    if d == "gitlab.com" || d.ends_with(".gitlab.com")          { return Some(("GitLab",     "Code")); }
+    if d == "linear.app" || d.ends_with(".linear.app")          { return Some(("Linear",     "Code")); }
+    if d == "bitbucket.org"                                      { return Some(("Bitbucket",  "Code")); }
+    if d.ends_with(".atlassian.net") && d.starts_with("jira")   { return Some(("Jira",       "Code")); }
+    if d.ends_with(".atlassian.net")                             { return Some(("Confluence", "Code")); }
+    if d.contains("confluence")                                  { return Some(("Confluence", "Code")); }
+    if d == "claude.ai"                                          { return Some(("Claude",     "Code")); }
+    if d == "chat.openai.com" || d == "chatgpt.com"             { return Some(("ChatGPT",    "Code")); }
+    if d == "aistudio.google.com"                                { return Some(("AI Studio",  "Code")); }
+    if d == "gemini.google.com"                                  { return Some(("Gemini",     "Code")); }
+    // --- Elegant / formal writing ---
+    if d == "mail.google.com"                                    { return Some(("Gmail",          "Elegant")); }
+    if d == "docs.google.com"                                    { return Some(("Google Docs",    "Elegant")); }
+    if d == "sheets.google.com"                                  { return Some(("Google Sheets",  "Elegant")); }
+    if d == "slides.google.com"                                  { return Some(("Google Slides",  "Elegant")); }
+    if d == "calendar.google.com"                                { return Some(("Google Calendar","Elegant")); }
+    if d == "drive.google.com"                                   { return Some(("Google Drive",   "Elegant")); }
+    if d.contains("outlook.") || d == "outlook.com"             { return Some(("Outlook",        "Elegant")); }
+    if d == "notion.so" || d.ends_with(".notion.so")            { return Some(("Notion",         "Elegant")); }
+    if d == "coda.io" || d.ends_with(".coda.io")                { return Some(("Coda",           "Elegant")); }
+    if d == "airtable.com"                                       { return Some(("Airtable",       "Elegant")); }
+    if d == "trello.com"                                         { return Some(("Trello",         "Elegant")); }
+    // --- Informal / chat ---
+    if d.ends_with(".slack.com") || d == "app.slack.com"        { return Some(("Slack",    "Informal")); }
+    if d == "discord.com" || d.ends_with(".discord.com")        { return Some(("Discord",  "Informal")); }
+    if d == "twitter.com" || d == "x.com"                       { return Some(("X",        "Informal")); }
+    if d == "linkedin.com" || d.ends_with(".linkedin.com")      { return Some(("LinkedIn", "Informal")); }
+    if d == "reddit.com"  || d.ends_with(".reddit.com")         { return Some(("Reddit",   "Informal")); }
+    // --- Display name only (no profile mapping) ---
+    if d == "figma.com"  || d.ends_with(".figma.com")           { return Some(("Figma",    "")); }
+    if d == "youtube.com" || d.ends_with(".youtube.com")        { return Some(("YouTube",  "")); }
+    if d == "miro.com" || d.ends_with(".miro.com")              { return Some(("Miro",     "")); }
+    if d == "loom.com"  || d.ends_with(".loom.com")             { return Some(("Loom",     "")); }
+    None
+}
+
 /// Maps a known web app domain to a human-readable display name.
 pub fn web_app_name_from_domain(domain: &str) -> Option<&'static str> {
-    let d = domain;
-    if d == "mail.google.com"                            { return Some("Gmail"); }
-    if d == "docs.google.com"                            { return Some("Google Docs"); }
-    if d == "sheets.google.com"                          { return Some("Google Sheets"); }
-    if d == "slides.google.com"                          { return Some("Google Slides"); }
-    if d == "calendar.google.com"                        { return Some("Google Calendar"); }
-    if d == "drive.google.com"                           { return Some("Google Drive"); }
-    if d == "notion.so" || d.ends_with(".notion.so")     { return Some("Notion"); }
-    if d == "github.com" || d.ends_with(".github.com")   { return Some("GitHub"); }
-    if d == "linear.app" || d.ends_with(".linear.app")   { return Some("Linear"); }
-    if d.ends_with(".slack.com") || d == "app.slack.com" { return Some("Slack"); }
-    if d == "discord.com" || d.ends_with(".discord.com") { return Some("Discord"); }
-    if d == "figma.com"  || d.ends_with(".figma.com")    { return Some("Figma"); }
-    if d == "twitter.com" || d == "x.com"                { return Some("X"); }
-    if d == "linkedin.com" || d.ends_with(".linkedin.com") { return Some("LinkedIn"); }
-    if d == "reddit.com"  || d.ends_with(".reddit.com")  { return Some("Reddit"); }
-    if d == "youtube.com" || d.ends_with(".youtube.com") { return Some("YouTube"); }
-    if d == "claude.ai"                                  { return Some("Claude"); }
-    if d == "chat.openai.com" || d == "chatgpt.com"      { return Some("ChatGPT"); }
-    if d == "aistudio.google.com"                        { return Some("AI Studio"); }
-    if d == "gemini.google.com"                          { return Some("Gemini"); }
-    if d.contains("outlook.")  || d == "outlook.com"     { return Some("Outlook"); }
-    if d.ends_with(".atlassian.net") && d.starts_with("jira") { return Some("Jira"); }
-    if d.ends_with(".atlassian.net")                     { return Some("Confluence"); }
-    if d.contains("confluence")                          { return Some("Confluence"); }
-    if d == "coda.io" || d.ends_with(".coda.io")         { return Some("Coda"); }
-    if d == "airtable.com"                               { return Some("Airtable"); }
-    if d == "trello.com"                                 { return Some("Trello"); }
-    if d == "miro.com" || d.ends_with(".miro.com")       { return Some("Miro"); }
-    if d == "loom.com"  || d.ends_with(".loom.com")      { return Some("Loom"); }
-    None
+    classify_domain(domain).map(|(name, _)| name)
 }
 
 /// Reads the favicon for a domain from the browser's local SQLite favicon cache.

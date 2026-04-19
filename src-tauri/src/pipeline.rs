@@ -27,6 +27,8 @@ pub struct AppInfo {
     pub pid: i32,
     pub name: String,
     pub icon_base64: Option<String>,
+    /// Resolved browser domain (e.g. "mail.google.com"), only set for browser tabs.
+    pub domain: Option<String>,
 }
 
 pub struct FrontmostApp(pub Mutex<AppInfo>);
@@ -119,38 +121,11 @@ fn bundle_id_to_profile_keyword(bundle_id: &str) -> Option<&'static str> {
 }
 
 /// Maps a browser tab domain to a profile keyword.
+/// Delegates to the single source of truth in event_tap::classify_domain.
 fn domain_to_profile_keyword(domain: &str) -> Option<&'static str> {
-    let d = domain;
-    // Code contexts — dev tools and AI assistants
-    if d == "github.com" || d == "gitlab.com" || d.ends_with(".atlassian.net")
-        || d == "linear.app" || d == "bitbucket.org" { return Some("Code"); }
-    if d == "claude.ai" || d == "chat.openai.com" || d == "chatgpt.com"
-        || d.contains("aistudio.google.com") { return Some("Code"); }
-    // Informal / chat
-    if d.ends_with(".slack.com") || d == "discord.com" || d == "twitter.com"
-        || d == "x.com" || d == "linkedin.com" { return Some("Informal"); }
-    // Elegant / formal writing — email is formal, not informal
-    if d == "mail.google.com" || d.contains("outlook.") || d == "outlook.com"
-        || d == "notion.so" || d == "docs.google.com" || d == "coda.io"
-        || d.contains("confluence") { return Some("Elegant"); }
-    None
-}
-
-/// Maps a resolved web app name (from get_app_info_for_pid) to a profile keyword.
-/// This avoids a second AX read — the name was already resolved from the URL.
-fn web_app_name_to_profile_keyword(name: &str) -> Option<&'static str> {
-    match name {
-        // Code / dev tools
-        "GitHub" | "GitLab" | "Linear" | "Jira" | "Confluence" | "Bitbucket"
-        | "Claude" | "ChatGPT" | "AI Studio" | "Gemini" | "Coda" => Some("Code"),
-        // Elegant / formal
-        "Gmail" | "Outlook" | "Google Docs" | "Google Sheets" | "Google Slides"
-        | "Notion" | "Airtable" | "Trello" => Some("Elegant"),
-        // Informal / chat
-        "Slack" | "Discord" | "X" | "LinkedIn" | "Reddit" => Some("Informal"),
-        // Unknown web app name or native app — fall through to bundle ID detection
-        _ => None,
-    }
+    crate::event_tap::classify_domain(domain)
+        .map(|(_, profile)| profile)
+        .filter(|p| !p.is_empty())
 }
 
 /// Given a PID, returns the best matching profile name (keyword) or None if no match.
@@ -245,12 +220,15 @@ fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (Str
         let frontmost = app.state::<FrontmostApp>().0.lock().unwrap().clone();
         let pid = frontmost.pid;
 
-        // For browsers: get_app_info_for_pid already resolved the web app name
-        // (e.g. "Gmail", "GitHub") via AX URL reading. Use that name to map to
-        // a domain-based keyword — avoids a second AX read with a tight timeout.
-        let keyword_from_web_app = web_app_name_to_profile_keyword(&frontmost.name);
+        // For browsers: get_app_info_for_pid already resolved the domain and
+        // stored it in FrontmostApp.domain. Use classify_domain directly —
+        // single source of truth, no second AX read needed.
+        let keyword_from_domain = frontmost.domain.as_deref()
+            .and_then(|d| crate::event_tap::classify_domain(d))
+            .map(|(_, profile)| profile)
+            .filter(|p| !p.is_empty());
 
-        let keyword = keyword_from_web_app
+        let keyword = keyword_from_domain
             .or_else(|| detect_profile_keyword_for_pid(pid));
 
         keyword.and_then(|keyword| {
@@ -311,7 +289,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 #[cfg(target_os = "macos")]
                                 if let Some(pid) = crate::event_tap::get_frontmost_app_pid() {
                                     let info = crate::event_tap::get_app_info_for_pid(pid)
-                                        .unwrap_or(AppInfo { pid, name: String::new(), icon_base64: None });
+                                        .unwrap_or(AppInfo { pid, name: String::new(), icon_base64: None, domain: None });
                                     let _ = app.emit("app-detected", serde_json::json!({
                                         "name": info.name,
                                         "icon": info.icon_base64,
