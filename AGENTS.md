@@ -100,36 +100,17 @@ Each agent maintains a status file in its own directory. The other agent **reads
 **Rules:**
 1. **Before starting any task**, read the other agent's status file to check for conflicts (shared files, blocking PRs, broken main).
 2. **Update your own status file** whenever you: start a new issue, open a PR, finish a rebase, change branches, or go idle.
-3. Both agents use the **same template** (below) — the only difference is Claude includes `Worktree`.
+3. Format is free-form Markdown — keep it short and scannable (a table of current state + list of files being touched).
 4. If the other agent's status shows they are touching a shared file (`src/hooks/`, `src/i18n.ts`), coordinate before editing it.
 5. If the other agent's status is stale (>24h without update), proceed with caution and note it.
 
-**Status file template (mandatory for both agents):**
+**Required hook — each agent must configure this in its own settings:**  
+Each agent must have a `UserPromptSubmit` hook that reads the other agent's status file before every prompt. This ensures mid-session status updates are never missed.
 
-```markdown
-# [Agent] Status
+- **Claude** → hook reads `.kiro/status.md` on every prompt (configured in `.claude/settings.json`)
+- **Kiro** → hook reads `.claude/status.md` on every prompt (configured in `.kiro/settings.json` or equivalent)
 
-> Last updated: YYYY-MM-DD
-
-## Current Work
-
-| Field | Value |
-|-------|-------|
-| Status | `idle` \| `in-progress` \| `pr-open` \| `awaiting-review` \| `blocked` |
-| Issue | #N |
-| Branch | `type/issue-N-desc` |
-| Worktree | `.claude/worktrees/issue-N`  ← Claude only, omit if Kiro |
-| PR | #N — título (omit if none) |
-| Last rebase from main | `commit-sha` |
-
-## Files Touching
-
-- `path/to/file.ext`
-
-## Notes
-
-- Una línea por nota relevante.
-```
+The hook injects the status as `additionalContext` with `hookEventName: "UserPromptSubmit"`. `.claude/settings.json` and `.kiro/settings.json` are gitignored — each agent maintains its own copy locally.
 
 **Required fields in status file:**
 - Current branch and issue number
