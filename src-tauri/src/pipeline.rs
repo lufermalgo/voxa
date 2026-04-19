@@ -77,11 +77,21 @@ fn bundle_id_for_pid(_pid: i32) -> Option<String> { None }
 /// Maps a bundle ID to a profile name keyword used in `detect_profile_for_pid`.
 fn bundle_id_to_profile_keyword(bundle_id: &str) -> Option<&'static str> {
     let b = bundle_id.to_lowercase();
-    // Code editors / IDEs
+    // Code editors / IDEs — explicit known IDs
     if b == "com.apple.dt.xcode"
         || b == "com.microsoft.vscode"
         || b == "com.todesktop.230313mzl4w4u92" // Cursor
         || b.starts_with("com.jetbrains.")
+    {
+        return Some("Code");
+    }
+    // AI coding assistants and dev tools — pattern-based
+    // Kiro: dev.kiro.desktop, Windsurf: codeium.windsurf, Zed: dev.zed.Zed, etc.
+    if b.starts_with("dev.kiro.")
+        || b.starts_with("dev.zed.")
+        || b.starts_with("codeium.")
+        || b.contains("windsurf")
+        || b.contains("antigravity") // Antigravity IDE
     {
         return Some("Code");
     }
