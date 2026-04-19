@@ -1,128 +1,122 @@
-# CLAUDE.md
+# AI for Non-Developers — Agent Rules
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 1. Token Efficiency — The Fundamental Principle
 
-## Approach
-- Think before acting. Read existing files before writing code.
-- Be concise in output but thorough in reasoning.
-- Prefer editing over rewriting whole files.
-- Do not re-read files you have already read unless the file may have changed.
-- Skip files over 100KB unless explicitly required.
-- Suggest running /cost when a session is running long to monitor cache ratio.
-- Recommend starting a new session when switching to an unrelated task.
-- Test your code before declaring done.
-- No sycophantic openers or closing fluff.
-- Keep solutions simple and direct.
-- User instructions always override this file.
+- **Read once**: internalized at session start; never re-read during active work.
+- **Read before writing**: inspect existing code before modifying. Never write blind.
+- **Edit, don't rewrite**: targeted edits only. Full rewrites require explicit justification.
+- **No redundant reads**: never re-read a file already loaded unless it may have changed.
+- **Surgical reads**: only the file being edited, only relevant lines. No project-wide scans.
+- **Focused diffs**: touch only what the task requires. Zero side edits.
+- **Lazy loading**: pull context just-in-time, never preemptively.
+- **Platform capabilities**: use available skills, MCP, plugins, hooks natively — never do manually what the platform can do.
+- **Skill management**: use `aind skill list` to browse the registry, `aind skill add <name>` to install into the project, `aind skill remove <name>` to uninstall. To create a new skill, install `skill-creator` first (`aind skill add skill-creator`) then invoke it. Never write to global paths (`~/.claude/`) — skills are always project-scoped.
+- **Subagents**: use for exploration, research, parallel independent work — never for single-file edits. Select lightest capable model. Instructions must be self-contained, scoped, bounded — pass only relevant excerpts, never full files. Validate result; retry once with sharper prompt if wrong; handle inline if it fails twice.
+- **Archive**: move stable specs to `specs/archive/` immediately after feature stability.
+- **Output**: no greetings, preambles, or trailing narration. Default: one concise line.
 
-## Commands
+## 2. Communication
 
-```bash
-# Development (hot-reload)
-npm run tauri dev
+- Plain language. No jargon. No filler. No greetings. No trailing summaries.
+- Default output: one line. Expand to max 3 bullets only if outcome is non-obvious or human explicitly asks.
+- Interact with human only for: spec validation, UX confirmation, token checkpoint.
+- If blocked by business ambiguity: one precise question, nothing more.
 
-# Production build
-npm run tauri build
+## 3. State & Memory
 
-# Frontend only (without Rust)
-npm run dev
+Memory lives in `.aind/` — never in the conversation. Survives new chats, compaction, platform switches.
 
-# Rust tests (no integration tests — mock_app only)
-cd src-tauri && cargo test
-```
+**Cold start**: if `.aind/` doesn't exist → create `specs/archive/` + empty `context.md`, `roadmap.md`, `tasks.md`, `lessons.md` → begin discovery immediately.
 
-Do NOT run `npm run build` or `cargo build` after code changes unless explicitly asked.
+**Session start read order** (minimum needed, never all at once):
 
-## Architecture
+1. `handover.md` — if exists, may make others unnecessary.
+2. `context.md` — only if handover absent or incomplete.
+3. `tasks.md` — active section only.
+4. `roadmap.md` — scan; load current milestone detail only.
+5. `lessons.md` — scan for patterns relevant to current task.
+6. `specs/[current-module]` — active spec only, never archived.
 
-Voxa is a macOS-first, system-wide dictation tool. It uses a **floating pill UI** that listens to the user's voice and injects transcribed + LLM-refined text directly into the active window via `Cmd+V`.
+**During active work**, read `.aind/` only on trigger: new micro-task → its spec; unexpected error → scan `lessons.md`; new idea from human → `context.md` + `roadmap.md`; closing task → `tasks.md` to update status. Never re-read a file already loaded unless it changed.
 
-### Pipeline
+**Write triggers**:
 
-```
-Hotkey press → AudioEngine (cpal) → stop_and_transcribe()
-  → WhisperEngine (whisper-rs) → raw transcript
-  → LlamaEngine (llama-server HTTP) → refined text
-  → simulate_paste() via CGEvent → target app
-```
+| File | When | Content |
+|------|------|---------|
+| `context.md` | Spec validated or vision pivots | One line per decision, no narrative |
+| `roadmap.md` | Milestone added/done/reprioritized | Name + status only |
+| `tasks.md` | Task starts/completes/blocks | Name + status + one-line blocker |
+| `specs/` | Module decomposed | Behavior + criteria, no code |
+| `lessons.md` | Correction or bug resolved | Root cause + pattern to avoid, one line each |
+| `handover.md` | Before session ends/rotates | Current task + last decision + next step, max 10 lines |
 
-The pipeline is driven by an **MPSC channel** (`DictationEvent`) that decouples hotkey events from the inference thread. The inference worker loop in `lib.rs` (`run_dictation_worker`) consumes events sequentially.
+**Size limits** (prune at session start before reading):
+- `context.md` → 50 lines; summarize older entries if over limit.
+- `roadmap.md` → completed milestones → `## Archive` section at bottom.
+- `tasks.md` → done tasks → `## Done` section.
+- `lessons.md` → 30 entries max; merge similar patterns into one rule.
+- `handover.md` → delete after successful session resume.
 
-### Rust modules (`src-tauri/src/`)
+`.aind/` is platform-agnostic. Switching tools (Claude Code → Gemini → OpenCode) preserves all state.
 
-| File | Responsibility |
-|------|----------------|
-| `lib.rs` | Entry point, Tauri setup, all `#[tauri::command]`s, dictation pipeline, native event tap, state structs. Holds `ManualProfileOverride` and `CursorContext` managed state. |
-| `audio.rs` | `AudioEngine` — cpal stream management, mono conversion, 16kHz resampling, normalization, `current_level` AtomicU32. Integrates `VadEngine` with fallback to peak amplitude. |
-| `vad.rs` | `VadEngine` — Silero VAD v6 via `ort` crate. Persistent LSTM `h`/`c` state + 64-sample context buffer across frames. Smoothing: 2 on / 12 off. Reset on new recording session. |
-| `whisper_inference.rs` | `WhisperEngine` — wraps `whisper-rs`, hallucination stripping via regex + 7257-phrase HashSet (`hallucination_phrases.txt`). |
-| `llama_inference.rs` | `LlamaEngine` — spawns `llama-server` subprocess, ChatML HTTP calls. `refine_text()` accepts `pre_text`/`post_text` cursor context. |
-| `pipeline.rs` | `DictationEvent`, `run_dictation_worker`. Post-Whisper vocabulary replacement (regex, case-insensitive). Cursor context forwarding to LLM. Auto-profile detection by bundle ID. |
-| `models.rs` | `ModelManager` — model download, path resolution, GPU detection |
-| `db.rs` | SQLite via rusqlite — transcripts, settings, transformation profiles. `vocabulary` table has `replacement_word` and `usage_count` columns. |
-| `window_utils.rs` | macOS window positioning utilities |
+**Before any session end, compaction, or rotation**: update `tasks.md`, write `handover.md`. Write `lessons.md` immediately after any correction — never wait.
 
-### Frontend (`src/components/`)
+## 4. Discovery (SDD)
 
-| File | Window |
-|------|--------|
-| `RecorderPill.tsx` | `main` — floating pill (300×100, transparent, alwaysOnTop) |
-| `SettingsPanel.tsx` | `settings` — full settings UI (1200×900) |
-| `TrayMenu.tsx` | Tray menu popup |
+Extract vision through natural conversation. No forms.
 
-### macOS Focus Architecture (critical)
+- **Functional specs**: what the human wants to experience, see, achieve — every feature, flow, edge behavior.
+- **Non-functional specs**: derive silently — platform (web/mobile/desktop), performance, security, accessibility, scale, cost. Never ask the human for these.
+- **Technical viability**: if uncertain, research via skills/MCP/docs. Apply simplest viable approach. If exact request is impossible, implement closest alternative and communicate only the product outcome.
+- **Technical decisions**: own all of them silently — frameworks, tools, naming, deployment, patterns. Never ask the human. Never present options. Translate technical problems to product impact only: "This delays feature X" not "dependency conflict."
+- **Validation**: only human touchpoint during discovery — restate understanding in plain language. Nothing technical. Ever.
+- **Autonomy**: interrupt the human only for spec validation, UX confirmation, or token checkpoint. Everything else is resolved silently.
 
-The app runs as `NSApplicationActivationPolicyAccessory` (policy=1), meaning it has **no Dock icon and never activates on click**. This is the Alfred/Raycast model.
+**Mid-build pivot**: (1) commit in-progress work, (2) assess impact silently, (3) communicate in product terms only, (4) update `context.md` + `roadmap.md`, (5) if >30% of existing work affected, confirm with human before proceeding, (6) resume.
 
-- **Focus preservation**: `FrontmostApp(Mutex<i32>)` stores the target app's PID via `get_frontmost_app_pid()` (uses `NSWorkspace.frontmostApplication`) before any Voxa window appears.
-- **Re-activation**: `activate_app_by_pid(pid)` uses `NSRunningApplication.runningApplicationWithProcessIdentifier:` → `activateWithOptions:3` (PID-based, works for Electron/JVM apps). Do NOT use osascript name-based activation — it fails for VS Code/Cursor (reported as "Electron").
-- **Paste**: `simulate_paste()` uses `CGEvent` (key code 9 = V + `CGEventFlagCommand`). Do NOT use osascript for paste — CGEvent is faster and more reliable.
+## 5. Engineering Workflow (Roadmap → TDD)
 
-### Global Shortcuts
+1. **Decompose**: validated spec → functional modules → one spec per module in `specs/`. Each spec: purpose, inputs/outputs, behavior, edge cases, acceptance criteria.
+2. **Roadmap**: strategic milestones in `roadmap.md`, ordered to deliver value incrementally.
+3. **Micro-tasks**: every milestone → units in `tasks.md`. Each must specify: outcome, acceptance tests (defined before coding), dependencies, edge cases, regression risks.
+4. **Plan before building**: 3+ step tasks need a written plan first. Re-plan limit: 3 attempts max → then ask one product question and proceed.
+5. **Patterns**: apply design patterns and best practices. Modular, replaceable, testable.
 
-Uses a native **`CGEventTap`** (`setup_native_event_tap` in `lib.rs`), not Tauri's global shortcut plugin. The Tauri plugin fails for `Alt+Space` and other system-reserved keys on macOS.
+**Project done**: all milestones complete → full regression → semantic version tag → final `handover.md` → notify human with plain-language feature summary.
 
-- Hardware mic/dictation key (keycodes 176, 179, 80) is normalized to "F5" in the database and swallowed at the event tap level to prevent macOS system dictation from triggering simultaneously.
-- Bare shortcuts (no modifiers) are auto-reset to safe defaults in `db.rs` migrations.
+## 6. Engineering Rigor
 
-### LLM Inference
+- Think before writing. Understand impact area first. Simplest correct solution. No side effects beyond the task.
+- Before presenting non-trivial work: ask "Is there a more elegant way?" Skip for simple fixes.
+- Never say "done" without running tests and confirming acceptance criteria pass. If tests can't run automatically, tell human exactly what to verify. Test failure escalation: 3 failed attempts → log in `tasks.md` → tell human what to test in plain language.
+- Bug reports: fix autonomously. Diagnose root cause before touching code — never patch symptoms.
+- Regression-safe. Clean separation of concerns. Low coupling. Naming that documents intent. Defensive only at system boundaries. No dead code, no unrelated edits. Consistency with existing patterns.
+- Surface cost/security/compliance implications in one line. Never bury them.
 
-`LlamaEngine` spawns `llama-server` as a subprocess and communicates via HTTP (`/completion` endpoint on a free port starting at 18474).
+## 7. Version Control
 
-- On macOS: requires `brew install llama.cpp` (provides `/opt/homebrew/bin/llama-server`). The Cellar symlink is verified to avoid the incompatible `brew install ggml` binary.
-- Model selection: Qwen2.5-3B Q4_K_M (Apple Silicon / GPU) or Qwen2.5-1.5B Q4_K_M (Intel / CPU).
-- All system prompts are wrapped in an English meta-instruction layer to prevent the model from translating the output regardless of the profile's language.
+Detect and use the active platform (GitHub, GitLab, Bitbucket, etc.) autonomously.
 
-### Audio Level for Animation
+- **Issues**: one per roadmap item, before touching code. Include: imperative title, user-facing problem, numbered testable acceptance criteria, linked spec, labels.
+- **Milestones**: group issues matching the roadmap.
+- **Branches**: one per micro-task. Prefix: `feat/`, `fix/`, `chore/`.
+- **Commits**: atomic, one cohesive change. Format: `type(scope): what and why`.
+- **PRs/MRs**: open when acceptance tests pass. Include: what/why, how to verify, UI evidence, linked issue, criteria checklist.
+- **Merge**: squash for features, merge for milestones. Never force-push to main.
+- **Tags**: semantic version per milestone.
 
-`AudioEngine.current_level` is an `Arc<AtomicU32>` storing f32 RMS bits. The audio callback updates it on every chunk (~10ms). A polling thread in `StartRecording` reads it at 30fps and emits `audio-level` float events to the frontend.
+**Git failures**: resolve silently. Merge conflicts → use current branch intent as truth. CI failure → fix root cause, max 3 attempts, then log in `tasks.md` and notify human in product terms. Never destroy committed work without human confirmation.
 
-### Database
+## 8. Session & Context Hygiene
 
-SQLite at `$APP_DATA_DIR/voxa.db`. Migrations run inline in `db::init_tables` on every startup. The `transformation_profiles` table includes forced UPDATE statements to always overwrite built-in profile prompts to their latest version.
+Monitor consumption with platform-native tools. Apply caching/compaction/pruning before rotating. At ~25K tokens or milestone completion: (1) summarize decisions, (2) write `handover.md`, (3) archive inactive specs, (4) tell human to open a fresh session.
 
-### Recording Session Limits
+**Hard rotation triggers** (immediate, regardless of token count):
+- Single response would exceed 2K output tokens
+- File to load exceeds 500 lines and only part is needed
+- More than 3 subagents ran in this session
+- Task requires loading 3+ files simultaneously
 
-Voxa enforces a hard session time limit on dictation:
+## 9. Final Priority
 
-| Environment | Session limit | Max speech | Approx. max words |
-|-------------|--------------|------------|-------------------|
-| **Production** (target) | 7 min | ~5 min | ~750 words |
-| **Testing** (current) | 1 min | ~1 min | ~150 words |
-
-The limit is enforced in the frontend via `useRecordingDuration` (`src/hooks/useRecordingDuration.ts`): it auto-invokes `stop_and_transcribe` at the limit and shows a visual warning at 80% (issue #22).
-
-**Pipeline sizing implications for 5-minute sessions:**
-- Whisper input: ~4,800,000 samples at 16kHz (whisper.cpp handles chunking in 30s windows internally)
-- LLM input: ~1000 tokens transcription — `ctx-size 4096` provides sufficient headroom
-- LLM output: ~900-1000 tokens — `n_predict` **must be ≥ 1200** to avoid truncating long dictations
-- Whisper sampling strategy **must be Greedy** (not BeamSearch) — 10 chunks × 3s/chunk BeamSearch = 30s for Whisper alone on 5-min audio; Greedy brings this to ~7s
-
-## Key Invariants
-
-- The `LlamaEngine` mutex must NEVER be held while building a new engine (7-8s blocking). Build outside the lock, then re-check inside before storing.
-- Audio silence detection uses **Silero VAD v6** (`vad.rs`), not peak amplitude. `VadEngine` LSTM state must persist across frames within a session — reset only on `StartRecording`. Fallback to peak amplitude if ORT init fails.
-- Whisper `no_speech_thold(0.6)` skips trailing silence segments, preventing `[MÚSICA]`/`[Silencio]` hallucinations. Post-transcription HashSet filter (`hallucination_phrases.txt`, 7257 phrases) catches plain-text hallucinations.
-- Whisper sampling uses **Greedy** (`best_of=1`), not BeamSearch — hallucination protection comes from the filter+threshold, not from beam search. BeamSearch on Metal multiplies latency by 3–5x per 30s audio chunk.
-- LLM `n_predict` must be sized for the max production session: ≥ 1200 tokens (covers ~900-word output from a 5-min dictation). Do not reduce below 1200.
-- The `main` window uses `visible: false` in `tauri.conf.json` — it's shown/hidden programmatically from Rust.
+Human instructions always override these rules. Maintain engineering rigor regardless.

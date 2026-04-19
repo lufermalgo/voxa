@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -7,7 +7,7 @@ import { useAudioLevel } from "../hooks/useAudioLevel";
 import { useRecordingDuration } from "../hooks/useRecordingDuration";
 import { AppInfo } from "../hooks/useTranscription";
 
-const PILL_WINDOW_HEIGHT_NORMAL  = 100;
+const PILL_WINDOW_HEIGHT_NORMAL  = 80;
 const PILL_WINDOW_HEIGHT_WARNING = 220; // pill (28px) + gap (8px) + card (~90px) + padding
 
 interface RecorderPillProps {
@@ -26,9 +26,13 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
   const barHeights = useAudioLevel(isRecording);
   const { progress, isWarning, timeRemaining } = useRecordingDuration(isRecording);
 
-  // Expand the window downward when warning fires so the popup card is visible.
-  // setSize alone is enough — window grows down from its current position.
+  const prevIsWarningRef = useRef(false);
+
+  // Expand the window upward when warning fires so the popup card is visible.
   useEffect(() => {
+    if (isWarning === prevIsWarningRef.current) return;
+    prevIsWarningRef.current = isWarning;
+
     const win = getCurrentWindow();
     win.setSize(new LogicalSize(300, isWarning ? PILL_WINDOW_HEIGHT_WARNING : PILL_WINDOW_HEIGHT_NORMAL));
   }, [isWarning]);
@@ -40,9 +44,9 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
     const label = customLabel || t.processing;
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
+        <div className="bg-[#0A0A0A]/80 backdrop-blur-[40px] h-12 px-4 rounded-[24px] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 relative overflow-hidden">
           <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope whitespace-nowrap">{label}</span>
+          <span className="text-[10px] font-bold text-white tracking-[0.2em] uppercase font-manrope whitespace-nowrap">{label}</span>
         </div>
       </div>
     );
@@ -51,10 +55,10 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
   if (status === "processing" || status === "refining") {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center justify-center gap-2 shadow-2xl relative overflow-hidden">
+        <div className="bg-[#0A0A0A]/80 backdrop-blur-[40px] h-12 px-4 rounded-[24px] flex items-center justify-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 relative overflow-hidden">
           <div className="absolute inset-0 bg-white/10 animate-pulse" />
           <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin relative z-10" />
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope relative z-10 whitespace-nowrap">{t.processing}</span>
+          <span className="text-[10px] font-bold text-white tracking-[0.2em] uppercase font-manrope relative z-10 whitespace-nowrap">{t.processing}</span>
         </div>
       </div>
     );
@@ -63,9 +67,9 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
   if (status === "done") {
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
-          <span className="material-symbols-outlined text-white !text-[18px] animate-in zoom-in duration-300">check_circle</span>
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope">{t.sent}</span>
+        <div className="bg-[#0A0A0A]/80 backdrop-blur-[40px] h-12 px-4 rounded-[24px] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 relative overflow-hidden">
+          <span className="material-symbols-outlined text-primary !text-[18px] animate-in zoom-in duration-300">check_circle</span>
+          <span className="text-[10px] font-bold text-white tracking-[0.2em] uppercase font-manrope">{t.sent}</span>
         </div>
       </div>
     );
@@ -75,7 +79,24 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
     return (
       <div className="animate-in fade-in zoom-in-95 duration-500 flex flex-col items-center gap-2">
 
-        {/* ── Pill (bottom) ── */}
+        {/* ── Warning popup card (above pill) — fades in at 80% ── */}
+        {isWarning && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-[268px] bg-[#1c1c1e] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-amber-400 !text-[20px] mt-0.5 flex-shrink-0">warning</span>
+              <div className="flex flex-col gap-1">
+                <p className="text-[11px] font-bold text-white font-manrope leading-tight">
+                  {t.recording_limit_popup_title}
+                </p>
+                <p className="text-[10px] text-white/60 font-manrope leading-snug">
+                  {t.recording_limit_popup_desc.replace('{s}', String(timeRemaining))}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Pill (bottom, anchored to Dock) ── */}
         <div
           className={`h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px] transition-colors duration-700 ${
             isWarning ? 'bg-amber-600' : 'bg-primary'
@@ -133,22 +154,6 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: 
           />
         </div>
 
-        {/* ── Warning popup card (below pill) — fades in at 80% ── */}
-        {isWarning && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300 w-[268px] bg-[#1c1c1e] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-amber-400 !text-[20px] mt-0.5 flex-shrink-0">warning</span>
-              <div className="flex flex-col gap-1">
-                <p className="text-[11px] font-bold text-white font-manrope leading-tight">
-                  {t.recording_limit_popup_title}
-                </p>
-                <p className="text-[10px] text-white/60 font-manrope leading-snug">
-                  {t.recording_limit_popup_desc.replace('{s}', String(timeRemaining))}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }

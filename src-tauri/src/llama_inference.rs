@@ -87,6 +87,7 @@ impl LlamaEngine {
     /// Sends the transcription + profile system prompt to the running llama-server
     /// and returns the transformed text.
     ///
+    /// `language` is the target language code (e.g., "es", "en") from user settings.
     /// `pre_text` and `post_text` are the text immediately before/after the cursor
     /// in the target application at the time recording started. When non-empty they
     /// are injected into the user message so the model can match capitalization, tone,
@@ -96,6 +97,7 @@ impl LlamaEngine {
         &mut self,
         text: &str,
         system_prompt: &str,
+        language: &str,
         pre_text: &str,
         post_text: &str,
     ) -> Result<String, String> {
@@ -116,11 +118,17 @@ impl LlamaEngine {
         };
 
         // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models.
-        // The language guard prevents Qwen from translating the output when the system prompt
-        // is written in a different language than the user's dictation.
+        let lang_name = match language {
+            "es" => "Spanish",
+            "en" => "English",
+            "pt" => "Portuguese",
+            "fr" => "French",
+            "de" => "German",
+            _ => language,
+        };
         let prompt = format!(
-            "<|im_start|>system\nIMPORTANT: Always respond in the SAME language as the user's text. Never translate.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-            system_prompt, user_message
+            "<|im_start|>system\nYou MUST output in {} only. Never translate. Do not respond in any other language.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            lang_name, system_prompt, user_message
         );
 
         let body = serde_json::json!({
