@@ -43,7 +43,7 @@ impl LlamaEngine {
         // --mlock: prevents model weights from being paged out under macOS memory pressure.
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            cmd.arg("--flash-attn");
+            cmd.arg("--flash-attn").arg("auto");
             cmd.arg("--mlock");
         }
 
