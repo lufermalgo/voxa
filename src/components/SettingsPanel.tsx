@@ -314,7 +314,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     )}
                   </div>
                   {transcripts.length > 0 && (
-                    <button onClick={clearHistory} className="text-[9px] font-semibold uppercase tracking-widest text-error hover:text-error/80 transition-colors py-1">
+                    <button onClick={clearHistory} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-error/10 text-error border border-error/20 hover:bg-error/20 transition-all">
                       {t.clear_history}
                     </button>
                   )}
@@ -367,18 +367,23 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                                     )}
                                     <div className="flex gap-2">
                                       <button onClick={() => saveTranscriptEdit(transcript.raw_content)} className="flex-1 bg-primary text-background py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-primary/90 transition-all">{t.save_profile ?? "Save"}</button>
-                                      <button onClick={() => { setEditingTranscriptId(null); setLearnedWords([]); }} className="px-4 bg-surface-container text-on-surface-variant py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-surface-container-high transition-all">{t.cancel}</button>
+                                      <button onClick={() => { setEditingTranscriptId(null); setLearnedWords([]); }} className="px-4 bg-surface-container text-on-surface-variant py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border border-on-surface/[0.10] hover:bg-surface-container-high transition-all">{t.cancel}</button>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="group flex items-center gap-3 py-2.5 border-b border-on-surface/[0.08] last:border-0 hover:bg-surface-container transition-colors rounded-sm -mx-2 px-2">
-                                    <span className="font-mono text-[10px] text-on-surface-variant/80 flex-shrink-0 w-10">{time}</span>
-                                    <p className={`flex-1 text-sm text-on-surface font-medium min-w-0 cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`} onClick={() => setExpandedTranscriptId(isExpanded ? null : transcript.id)}>{transcript.content}</p>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                      <CopyButton text={transcript.content} copyLabel={t.copy_text} />
-                                      <button onClick={() => startEditTranscript(transcript.id, transcript.content)} className="p-1 rounded text-on-surface-variant/80 hover:text-primary transition-colors"><span className="material-symbols-outlined text-[14px]">edit</span></button>
-                                      <button onClick={() => deleteTranscript(transcript.id)} className="p-1 rounded text-on-surface-variant/80 hover:text-error transition-colors"><span className="material-symbols-outlined text-[14px]">close</span></button>
+                                  <div className="p-4 mb-3 rounded-xl bg-surface-container-low border border-on-surface/[0.06] hover:border-primary/20 hover:bg-surface-container transition-all">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="font-mono text-[10px] text-on-surface-variant font-medium">{time}</span>
+                                      <div className="flex items-center gap-1">
+                                        <CopyButton text={transcript.content} copyLabel={t.copy_text} />
+                                        <button onClick={() => startEditTranscript(transcript.id, transcript.content)} className="p-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-all" title={t.edit ?? "Edit"}><span className="material-symbols-outlined text-[14px]">edit</span></button>
+                                        <button onClick={() => deleteTranscript(transcript.id)} className="p-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:bg-error/10 hover:text-error transition-all" title={t.delete}><span className="material-symbols-outlined text-[14px]">delete</span></button>
+                                      </div>
                                     </div>
+                                    <p className={`text-sm text-on-surface leading-relaxed cursor-pointer ${isExpanded ? 'whitespace-pre-wrap' : ''}`} onClick={() => setExpandedTranscriptId(isExpanded ? null : transcript.id)}>{transcript.content}</p>
+                                    {!isExpanded && transcript.content.length > 120 && (
+                                      <button onClick={() => setExpandedTranscriptId(transcript.id)} className="mt-1 text-[10px] text-primary font-semibold hover:text-primary/80 transition-colors">Ver más...</button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -441,7 +446,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                                 {(['plain', 'markdown'] as const).map(mode => {
                                   const isModeActive = (profile.formatting_mode || 'plain') === mode;
                                   return (
-                                    <button key={mode} onClick={() => updateProfileFormattingMode(profile.id, mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${isModeActive ? 'bg-primary text-background' : 'bg-background/40 text-on-surface-variant hover:bg-surface-container'}`}>
+                                    <button key={mode} onClick={() => updateProfileFormattingMode(profile.id, mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${isModeActive ? 'bg-primary text-background shadow-sm' : 'bg-surface-container text-on-surface-variant border border-on-surface/[0.10] hover:bg-surface-container-high'}`}>
                                       <div>{mode === 'plain' ? t.formatting_mode_plain : t.formatting_mode_markdown}</div>
                                       <div className={`text-[8px] normal-case tracking-normal mt-0.5 font-normal ${isModeActive ? 'text-on-primary/70' : 'text-on-surface-variant'}`}>{mode === 'plain' ? t.formatting_mode_plain_desc : t.formatting_mode_markdown_desc}</div>
                                     </button>
@@ -450,9 +455,9 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                               </div>
                             </div>
                             <div className="flex gap-2 pt-1">
-                              <button onClick={() => { updateProfile(profile.id, editName, editPrompt, editIcon); setEditingProfileId(null); }} className="flex-1 bg-on-surface text-background py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-on-surface/90 transition-all">{t.save_profile}</button>
-                              {!profile.is_default && <button onClick={() => setConfirmModal({ type: 'delete-profile', id: profile.id, name: profile.name })} className="px-4 bg-error/10 text-error py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-error/20 transition-all">{t.borrar}</button>}
-                              <button onClick={() => setEditingProfileId(null)} className="px-4 bg-surface-container text-on-surface-variant py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-surface-container-high transition-all">{t.cancel}</button>
+                              <button onClick={() => { updateProfile(profile.id, editName, editPrompt, editIcon); setEditingProfileId(null); }} className="flex-1 bg-primary text-background py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-primary/90 transition-all shadow-sm">{t.save_profile}</button>
+                              {!profile.is_default && <button onClick={() => setConfirmModal({ type: 'delete-profile', id: profile.id, name: profile.name })} className="px-4 bg-error/10 text-error py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border border-error/20 hover:bg-error/20 transition-all">{t.borrar}</button>}
+                              <button onClick={() => setEditingProfileId(null)} className="px-4 bg-surface-container text-on-surface-variant py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border border-on-surface/[0.10] hover:bg-surface-container-high transition-all">{t.cancel}</button>
                             </div>
                           </div>
                         )}
@@ -460,7 +465,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     );
                   })}
                   {!isCreatingProfile ? (
-                    <button onClick={() => { setIsCreatingProfile(true); setEditingProfileId(null); setNewName(""); setNewPrompt(""); setNewIcon("psychology"); }} className="mt-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-on-surface-variant/80 hover:text-primary transition-colors py-2">
+                    <button onClick={() => { setIsCreatingProfile(true); setEditingProfileId(null); setNewName(""); setNewPrompt(""); setNewIcon("psychology"); }} className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-on-surface/[0.15] text-[11px] font-black uppercase tracking-wider text-on-surface-variant hover:border-primary hover:text-primary hover:bg-primary/5 transition-all w-full justify-center">
                       <span className="material-symbols-outlined text-[16px]">add</span>
                       {t.create_new_profile}
                     </button>
@@ -487,8 +492,8 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                         <textarea value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} rows={3} className="w-full bg-background/40 rounded-lg px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all resize-none leading-relaxed font-medium italic" placeholder={t.expert_example} />
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => { if (newName && newPrompt) { createProfile(newName, newPrompt, newIcon); setIsCreatingProfile(false); } }} className="flex-1 bg-on-surface text-background py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-on-surface/90 transition-all">{t.create_profile}</button>
-                        <button onClick={() => setIsCreatingProfile(false)} className="px-4 bg-surface-container text-on-surface-variant py-2 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-surface-container-high transition-all">{t.discard}</button>
+                        <button onClick={() => { if (newName && newPrompt) { createProfile(newName, newPrompt, newIcon); setIsCreatingProfile(false); } }} className="flex-1 bg-primary text-background py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-primary/90 transition-all shadow-sm">{t.create_profile}</button>
+                        <button onClick={() => setIsCreatingProfile(false)} className="px-4 bg-surface-container text-on-surface-variant py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border border-on-surface/[0.10] hover:bg-surface-container-high transition-all">{t.discard}</button>
                       </div>
                     </div>
                   )}
@@ -496,42 +501,17 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
               </section>
             )}
 
-            {/* ── DICTIONARY ── tabla ultra-compacta */}
+            {/* ── DICTIONARY ── add at top, paginated grid */}
             {activeTab === "dictionary" && (
-              <section className="flex flex-col">
-                <div className="flex items-baseline gap-2 mb-6">
-                  <h3 className="text-xl font-black text-on-surface font-headline">{t.personal_dictionary}</h3>
-                  {dictionaryEntries.length > 0 && <span className="text-[10px] text-on-surface-variant font-mono">({dictionaryEntries.length})</span>}
-                </div>
-                <div className="flex items-center gap-4 pb-2 border-b border-on-surface/[0.10]">
-                  <span className="flex-1 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant/80">{t.word ?? "Word"}</span>
-                  <span className="flex-1 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant/80">{t.replacement ?? "Replacement"}</span>
-                  <span className="w-10 text-right text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant/80">{t.usage ?? "Uses"}</span>
-                  <span className="w-4" />
-                </div>
-                {dictionaryEntries.length === 0 ? (
-                  <div className="py-10 text-center"><p className="text-[10px] text-on-surface-variant/80 italic font-black uppercase tracking-[0.2em]">{t.dictionary_empty}</p></div>
-                ) : (
-                  <div>
-                    {dictionaryEntries.map(entry => (
-                      <div key={entry.word} className="group flex items-center gap-4 py-2 border-b border-on-surface/[0.08] last:border-0 min-h-[36px]">
-                        <span className="flex-1 text-sm font-bold text-on-surface">{entry.word}</span>
-                        <input type="text" placeholder="—" defaultValue={entry.replacement_word ?? ""} onBlur={(e) => { const val = e.target.value.trim() || null; updateReplacement(entry.word, val); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} className="flex-1 bg-transparent text-xs text-on-surface/75 placeholder:text-on-surface-variant/80 focus:outline-none focus:bg-surface-container rounded px-1 py-0.5 transition-colors" />
-                        <span className="w-10 text-right">
-                          {entry.usage_count > 0 ? <span className="text-[10px] font-black text-primary/90">{entry.usage_count}</span> : <span className="text-on-surface-variant/60 text-[10px]">—</span>}
-                        </span>
-                        <button onClick={() => removeWord(entry.word)} className="w-4 opacity-0 group-hover:opacity-100 text-on-surface-variant/80 hover:text-error transition-all">
-                          <span className="material-symbols-outlined text-[14px]">close</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="sticky bottom-0 pt-3 pb-1 bg-background/80 backdrop-blur-sm flex gap-2 mt-4">
-                  <input type="text" placeholder={t.dictionary_placeholder} value={newWord} onChange={(e) => setNewWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newWord.trim()) { addWord(newWord.trim()); setNewWord(""); } }} className="flex-1 bg-surface-container rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-on-surface-variant/80" />
-                  <button onClick={() => { if (newWord.trim()) { addWord(newWord.trim()); setNewWord(""); } }} disabled={!newWord.trim()} className="px-5 bg-primary text-background rounded-lg text-[11px] font-black uppercase tracking-wider disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/90 transition-all">{t.add}</button>
-                </div>
-              </section>
+              <DictionarySection
+                dictionaryEntries={dictionaryEntries}
+                newWord={newWord}
+                setNewWord={setNewWord}
+                addWord={addWord}
+                removeWord={removeWord}
+                updateReplacement={updateReplacement}
+                t={t}
+              />
             )}
 
             {/* ── MODELS ── lista simple */}
@@ -570,7 +550,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                       </div>
                     )}
                     <div className="flex justify-end pt-5">
-                      <button onClick={() => setConfirmModal({ type: 'redownload' })} disabled={isDownloadingModels} className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant hover:text-on-surface disabled:opacity-20 disabled:cursor-not-allowed transition-colors py-1.5 px-3 rounded-lg hover:bg-surface-container-high/60">
+                      <button onClick={() => setConfirmModal({ type: 'redownload' })} disabled={isDownloadingModels} className="text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl bg-surface-container text-on-surface-variant border border-on-surface/[0.10] hover:bg-surface-container-high hover:text-on-surface disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                         {isDownloadingModels ? t.loading : t.redownload}
                       </button>
                     </div>
@@ -598,7 +578,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                 </div>
                 <div className="flex items-center justify-between pt-5 pb-2 mt-1 border-t border-on-surface/[0.10]">
                   <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-on-surface-variant">{t.global_shortcut}</span>
-                  <button onClick={() => { updateSetting("shortcut_push_to_talk", "Alt+Space"); updateSetting("shortcut_hands_free", "F5"); updateSetting("shortcut_paste", "CommandOrControl+Shift+V"); updateSetting("shortcut_cancel", "Escape"); }} className="text-[9px] font-black uppercase tracking-wider text-on-surface-variant/80 hover:text-on-surface transition-colors">{t.reset_defaults}</button>
+                  <button onClick={() => { updateSetting("shortcut_push_to_talk", "Alt+Space"); updateSetting("shortcut_hands_free", "F5"); updateSetting("shortcut_paste", "CommandOrControl+Shift+V"); updateSetting("shortcut_cancel", "Escape"); }} className="text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant border border-on-surface/[0.10] hover:bg-surface-container-high hover:text-on-surface transition-all">{t.reset_defaults}</button>
                 </div>
                 {[
                   { key: "shortcut_push_to_talk", label: t.shortcut_push_to_talk },
@@ -612,7 +592,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                   return (
                     <div key={sc.key} className="flex items-center justify-between py-2.5 min-h-[40px] border-b border-on-surface/[0.08]">
                       <span className="text-sm text-on-surface">{sc.label}</span>
-                      <button onClick={() => setCapturingShortcutFor(sc.key as keyof AppSettings)} className={`font-mono text-sm px-2.5 py-1 rounded-md transition-all ${isCapturing ? 'bg-primary/10 text-primary ring-1 ring-primary/30 animate-pulse' : 'bg-surface-container text-on-surface hover:bg-surface-container-highest/70'}`}>{displayVal}</button>
+                      <button onClick={() => setCapturingShortcutFor(sc.key as keyof AppSettings)} className={`font-mono text-sm px-2.5 py-1 rounded-md transition-all ${isCapturing ? 'bg-primary/10 text-primary ring-2 ring-primary/40 animate-pulse' : 'bg-surface-container-high text-on-surface font-bold border border-on-surface/[0.12] hover:bg-surface-container-highest hover:border-primary/30 shadow-sm'}`}>{displayVal}</button>
                     </div>
                   );
                 })}
@@ -630,7 +610,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                   <span className="text-sm text-on-surface">{t.transcription_input_lang}</span>
                   <div className="flex gap-1.5">
                     {['es', 'en'].map(lang => (
-                      <button key={lang} onClick={() => updateSetting("language", lang)} className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider transition-all ${settings.language === lang ? 'bg-primary text-background' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'}`}>
+                      <button key={lang} onClick={() => updateSetting("language", lang)} className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider transition-all ${settings.language === lang ? 'bg-primary text-background shadow-sm' : 'bg-surface-container text-on-surface-variant border border-on-surface/[0.10] hover:bg-surface-container-high hover:text-on-surface'}`}>
                         {lang === 'es' ? t.spanish : t.english}
                       </button>
                     ))}
@@ -659,7 +639,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
               </p>
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <button onClick={() => setConfirmModal(null)} className="px-4 py-2 rounded-lg bg-surface-container-high/60 text-on-surface-variant text-[10px] font-black uppercase tracking-wider hover:bg-surface-container-high/60 transition-colors">{t.cancel}</button>
+              <button onClick={() => setConfirmModal(null)} className="px-4 py-2 rounded-xl bg-surface-container text-on-surface-variant text-[10px] font-black uppercase tracking-wider border border-on-surface/[0.10] hover:bg-surface-container-high transition-all">{t.cancel}</button>
               <button onClick={() => { if (confirmModal.type === 'redownload') executeRedownload(); else if (confirmModal.type === 'clear') executeClearHistory(); else if (confirmModal.type === 'delete-profile') { deleteProfile(confirmModal.id); setConfirmModal(null); setEditingProfileId(null); } else executeDelete(confirmModal.id); }} className="px-4 py-2 rounded-lg bg-error/80 text-white text-[10px] font-black uppercase tracking-wider hover:bg-error/90 transition-colors">
                 {confirmModal.type === 'redownload' ? t.redownload : t.delete}
               </button>
@@ -668,6 +648,130 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
         </div>
       )}
     </div>
+  );
+}
+
+// ── DICTIONARY SECTION ── add at top, paginated 2-column grid
+const DICT_PAGE_SIZE = 10;
+
+function DictionarySection({ dictionaryEntries, newWord, setNewWord, addWord, removeWord, updateReplacement, t }: {
+  dictionaryEntries: any[];
+  newWord: string;
+  setNewWord: (v: string) => void;
+  addWord: (w: string) => void;
+  removeWord: (w: string) => void;
+  updateReplacement: (word: string, replacement: string | null) => void;
+  t: any;
+}) {
+  const [page, setPage] = useState(0);
+  const totalPages = Math.ceil(dictionaryEntries.length / DICT_PAGE_SIZE);
+  const pageEntries = dictionaryEntries.slice(page * DICT_PAGE_SIZE, (page + 1) * DICT_PAGE_SIZE);
+
+  return (
+    <section>
+      {/* Header */}
+      <div className="flex items-baseline gap-2 mb-4">
+        <h3 className="text-xl font-black text-on-surface font-headline">{t.personal_dictionary}</h3>
+        {dictionaryEntries.length > 0 && (
+          <span className="text-[10px] text-on-surface-variant font-mono">({dictionaryEntries.length})</span>
+        )}
+      </div>
+
+      {/* Add word — at the TOP */}
+      <div className="flex gap-2 mb-6">
+        <input
+          type="text"
+          placeholder={t.dictionary_placeholder}
+          value={newWord}
+          onChange={(e) => setNewWord(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && newWord.trim()) { addWord(newWord.trim()); setNewWord(""); } }}
+          className="flex-1 bg-surface-container rounded-xl px-4 py-2.5 text-sm text-on-surface border border-on-surface/[0.10] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 placeholder:text-on-surface-variant/60 transition-all"
+        />
+        <button
+          onClick={() => { if (newWord.trim()) { addWord(newWord.trim()); setNewWord(""); } }}
+          disabled={!newWord.trim()}
+          className="px-5 bg-primary text-background rounded-xl text-[11px] font-black uppercase tracking-wider disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/90 transition-all shadow-sm"
+        >
+          {t.add}
+        </button>
+      </div>
+
+      {/* Empty state */}
+      {dictionaryEntries.length === 0 ? (
+        <div className="py-12 flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-on-surface/[0.08]">
+          <span className="material-symbols-outlined text-3xl text-on-surface-variant/30">book</span>
+          <p className="text-[11px] text-on-surface-variant font-semibold uppercase tracking-[0.2em]">{t.dictionary_empty}</p>
+        </div>
+      ) : (
+        <>
+          {/* Column headers */}
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            {[0, 1].map(col => (
+              <div key={col} className="flex items-center gap-3 px-3 pb-1 border-b border-on-surface/[0.10]">
+                <span className="flex-1 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.word ?? "Word"}</span>
+                <span className="w-16 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.replacement ?? "Replacement"}</span>
+                <span className="w-8 text-right text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.usage ?? "Uses"}</span>
+                <span className="w-5" />
+              </div>
+            ))}
+          </div>
+
+          {/* 2-column grid of entries */}
+          <div className="grid grid-cols-2 gap-x-3">
+            {pageEntries.map(entry => (
+              <div key={entry.word} className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container transition-colors min-h-[40px] border-b border-on-surface/[0.06]">
+                <span className="flex-1 text-sm font-semibold text-on-surface truncate">{entry.word}</span>
+                <input
+                  type="text"
+                  placeholder="—"
+                  defaultValue={entry.replacement_word ?? ""}
+                  onBlur={(e) => { const val = e.target.value.trim() || null; updateReplacement(entry.word, val); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  className="w-16 bg-transparent text-xs text-on-surface-variant focus:outline-none focus:bg-surface-container-high rounded px-1 py-0.5 transition-colors placeholder:text-on-surface-variant/40"
+                />
+                <span className="w-8 text-right">
+                  {entry.usage_count > 0
+                    ? <span className="text-[10px] font-bold text-primary">{entry.usage_count}</span>
+                    : <span className="text-on-surface-variant/40 text-[10px]">—</span>
+                  }
+                </span>
+                <button
+                  onClick={() => removeWord(entry.word)}
+                  className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-error hover:bg-error/10 transition-all"
+                >
+                  <span className="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-on-surface/[0.08]">
+              <span className="text-[11px] text-on-surface-variant">
+                {page * DICT_PAGE_SIZE + 1}–{Math.min((page + 1) * DICT_PAGE_SIZE, dictionaryEntries.length)} de {dictionaryEntries.length}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant text-[11px] font-semibold border border-on-surface/[0.10] hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  ← Anterior
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant text-[11px] font-semibold border border-on-surface/[0.10] hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
