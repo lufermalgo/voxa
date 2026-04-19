@@ -155,11 +155,12 @@ fn run_llm_refinement(
     llama: &mut LlamaEngine,
     raw_text: &str,
     system_prompt: &str,
+    language: &str,
     pre_text: &str,
     post_text: &str,
     app: &tauri::AppHandle,
 ) -> String {
-    match llama.refine_text(raw_text, system_prompt, pre_text, post_text) {
+    match llama.refine_text(raw_text, system_prompt, language, pre_text, post_text) {
         Ok(refined) => refined,
         Err(e) => {
             log::error!("LLM refinement failed: {}", e);
@@ -352,6 +353,11 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         continue;
                     }
 
+                    // --- Get configured language ---
+                    let language = app.state::<SettingsCache>()
+                        .get("language")
+                        .unwrap_or_else(|| "es".to_string());
+
                     // --- Whisper transcription ---
                     let raw_text = {
                         let mut whisper_lock = engine_state.whisper.lock().unwrap();
@@ -376,20 +382,16 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                             }
                         }
                         let whisper = whisper_lock.as_ref().unwrap();
-                        let (language, initial_prompt) = {
-                            let lang = app.state::<SettingsCache>()
-                                .get("language")
-                                .unwrap_or_else(|| "es".to_string());
+                        let initial_prompt = {
                             let dict = {
                                 let conn = db_state.conn.lock().unwrap();
                                 db::get_custom_dictionary(&conn).unwrap_or_default()
                             };
-                            let prompt = if dict.is_empty() {
+                            if dict.is_empty() {
                                 "".to_string()
                             } else {
                                 format!("Vocabulary: {}.", dict.join(", "))
-                            };
-                            (lang, prompt)
+                            }
                         };
                         let t_stt    = std::time::Instant::now();
                         let audio_secs = samples.len() as f64 / 16000.0;
@@ -498,7 +500,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                             raw_text.clone()
                                         } else {
                                             let t_llm = std::time::Instant::now();
-                                            let result = run_llm_refinement(llama, &raw_text, &system_prompt, &cursor_pre, &cursor_post, &app);
+                                            let result = run_llm_refinement(llama, &raw_text, &system_prompt, &language, &cursor_pre, &cursor_post, &app);
                                             log::info!(
                                                 "LLM: {:.2}s  in={} chars  out={} chars",
                                                 t_llm.elapsed().as_secs_f64(), raw_text.len(), result.len()
@@ -525,7 +527,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 raw_text.clone()
                             } else {
                                 let t_llm  = std::time::Instant::now();
-                                let result = run_llm_refinement(llama, &raw_text, &system_prompt, &cursor_pre, &cursor_post, &app);
+                                let result = run_llm_refinement(llama, &raw_text, &system_prompt, &language, &cursor_pre, &cursor_post, &app);
                                 log::info!(
                                     "LLM: {:.2}s  in={} chars  out={} chars",
                                     t_llm.elapsed().as_secs_f64(), raw_text.len(), result.len()

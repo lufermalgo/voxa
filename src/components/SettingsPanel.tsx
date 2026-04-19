@@ -18,7 +18,7 @@ interface AudioDevice {
 
 export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPanelProps) {
   const t = translations[uiLocale];
-  const { settings, profiles, dictionary, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, createProfile, deleteProfile, loading } = useSettings();
+  const { settings, profiles, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
   const [capturingShortcutFor, setCapturingShortcutFor] = useState<keyof AppSettings | null>(null);
   const capturingRef = useRef<keyof AppSettings | null>(null);

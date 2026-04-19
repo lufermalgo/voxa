@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+use std::fs::File;
 
 /// Finds a free localhost port by asking the OS to assign one.
 fn find_free_port() -> u16 {
@@ -27,17 +28,22 @@ impl LlamaEngine {
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("99")       // offload all layers to GPU (Metal/CUDA); CPU fallback is automatic
             .arg("--ctx-size").arg("4096")
-            .arg("--log-disable")
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::null());
+
+        // Capture stderr to diagnose slowness
+        if let Ok(stderr_file) = File::create("/tmp/llama-server.log") {
+            cmd.stderr(stderr_file);
+        } else {
+            cmd.stderr(Stdio::null());
+        }
 
         // Flash Attention and memory locking are Metal-specific optimizations.
         // --flash-attn: 20-40% speedup on attention layers via Metal.
         // --mlock: prevents model weights from being paged out under macOS memory pressure.
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            cmd.arg("--flash-attn");
+            cmd.arg("--flash-attn").arg("auto");
             cmd.arg("--mlock");
         }
 
@@ -53,12 +59,15 @@ impl LlamaEngine {
         // On M3 with Metal, Qwen2.5-1.5B Q4_K_M loads in ~1-2s.
         let health_url = format!("http://127.0.0.1:{}/health", port);
         let mut ready = false;
-        for _ in 0..60 {
+        let start = std::time::Instant::now();
+        for attempt in 0..240 {
             std::thread::sleep(Duration::from_millis(500));
             let ok = client.get(&health_url).send()
                 .map(|r| r.status().is_success())
                 .unwrap_or(false);
             if ok {
+                let elapsed = start.elapsed().as_secs_f32();
+                log::info!("LlamaEngine ready in {:.1}s (attempt {})", elapsed, attempt);
                 ready = true;
                 break;
             }
@@ -67,7 +76,7 @@ impl LlamaEngine {
         if !ready {
             let _ = process.kill();
             return Err(format!(
-                "llama-server failed to become ready within 30s (port {})", port
+                "llama-server failed to become ready within 120s (port {})", port
             ));
         }
 
@@ -78,6 +87,7 @@ impl LlamaEngine {
     /// Sends the transcription + profile system prompt to the running llama-server
     /// and returns the transformed text.
     ///
+    /// `language` is the target language code (e.g., "es", "en") from user settings.
     /// `pre_text` and `post_text` are the text immediately before/after the cursor
     /// in the target application at the time recording started. When non-empty they
     /// are injected into the user message so the model can match capitalization, tone,
@@ -87,6 +97,7 @@ impl LlamaEngine {
         &mut self,
         text: &str,
         system_prompt: &str,
+        language: &str,
         pre_text: &str,
         post_text: &str,
     ) -> Result<String, String> {
@@ -107,11 +118,17 @@ impl LlamaEngine {
         };
 
         // ChatML format — compatible with Qwen2.5-Instruct and most modern instruct models.
-        // The language guard prevents Qwen from translating the output when the system prompt
-        // is written in a different language than the user's dictation.
+        let lang_name = match language {
+            "es" => "Spanish",
+            "en" => "English",
+            "pt" => "Portuguese",
+            "fr" => "French",
+            "de" => "German",
+            _ => language,
+        };
         let prompt = format!(
-            "<|im_start|>system\nIMPORTANT: Always respond in the SAME language as the user's text. Never translate.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-            system_prompt, user_message
+            "<|im_start|>system\nYou MUST output in {} only. Never translate. Do not respond in any other language.\n\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            lang_name, system_prompt, user_message
         );
 
         let body = serde_json::json!({

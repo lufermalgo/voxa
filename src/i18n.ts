@@ -62,6 +62,10 @@ export const translations = {
     dictionary_empty: "Your internal vocabulary is empty.",
     dictionary_placeholder: "e.g., Next.js, Rioplatense, Lufer...",
     add: "ADD",
+    word: "Word",
+    replacement: "Replacement",
+    usage: "Uses",
+    replacement_placeholder: "e.g. correct spelling",
     
     // General Section
     system_settings: "System Settings",
@@ -172,6 +176,10 @@ export const translations = {
     dictionary_empty: "Tu vocabulario interno está vacío.",
     dictionary_placeholder: "Ej: Next.js, Rioplatense, Lufer...",
     add: "AGREGAR",
+    word: "Palabra",
+    replacement: "Reemplazo",
+    usage: "Usos",
+    replacement_placeholder: "Ej: ortografía correcta",
     
     // General Section
     system_settings: "Configuración del Sistema",

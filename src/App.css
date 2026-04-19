@@ -163,11 +163,18 @@ h1, h2, h3, h4, .font-headline {
   animation: wave-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+/* Premium shimmer sweep para processing — 45° diagonal */
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-150%) skewX(-15deg); }
+  100% { transform: translateX(250%) skewX(-15deg); }
 }
 
-.animate-shimmer {
-  animation: shimmer 2s infinite;
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 1.5s linear infinite;
+}
+
+/* Bar grow para waveform */
+@keyframes bar-grow {
+  0%, 100% { transform: scaleY(0.4); }
+  50%       { transform: scaleY(1.0); }
 }

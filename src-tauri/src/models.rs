@@ -53,7 +53,6 @@ pub struct ModelsStateInfo {
 pub struct ModelManager {
     pub base_path: PathBuf,
     pub is_downloading: std::sync::atomic::AtomicBool,
-    pub gpu_available: bool,
 }
 
 impl ModelManager {
@@ -63,12 +62,10 @@ impl ModelManager {
         if !models_dir.exists() {
             fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models directory: {}", e))?;
         }
-        let gpu_available = detect_gpu();
-        log::info!("GPU detected: {}", gpu_available);
+        log::info!("GPU detected: {}", detect_gpu());
         Ok(Self {
             base_path: models_dir,
             is_downloading: std::sync::atomic::AtomicBool::new(false),
-            gpu_available,
         })
     }
 
@@ -77,32 +74,20 @@ impl ModelManager {
     }
 
     pub fn get_llama_filename(&self) -> &'static str {
-        if self.gpu_available {
-            "qwen2.5-3b-instruct-q4_k_m.gguf"
-        } else {
-            "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-        }
+        "qwen2.5-1.5b-instruct-q4_k_m.gguf"
     }
 
     pub fn get_llama_display_name(&self) -> &'static str {
-        if self.gpu_available {
-            "Qwen2.5-3B (Refinement, GPU)"
-        } else {
-            "Qwen2.5-1.5B (Refinement, CPU)"
-        }
+        "Qwen2.5-1.5B (Refinement, GPU)"
     }
 
     /// Short name used in download progress pill — keep it brief.
     pub fn get_llama_short_name(&self) -> &'static str {
-        if self.gpu_available { "Qwen2.5-3B" } else { "Qwen2.5-1.5B" }
+        "Qwen2.5-1.5B"
     }
 
     pub fn get_llama_download_url(&self) -> &'static str {
-        if self.gpu_available {
-            "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
-        } else {
-            "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
-        }
+        "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
     }
 
     pub fn get_llama_path(&self) -> PathBuf {

@@ -172,8 +172,8 @@ fn init_tables(conn: &Connection) -> Result<()> {
 
     conn.execute(
         "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES
-        (1, 'Elegant', 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Return ONLY the rewritten text, nothing else.', 'star', 1),
-        (2, 'Informal', 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Return ONLY the final message, nothing else.', 'forum', 1),
+        (1, 'Elegant', 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Keep the original language. Return ONLY the rewritten text, nothing else.', 'star', 1),
+        (2, 'Informal', 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Keep the original language. Return ONLY the final message, nothing else.', 'forum', 1),
         (3, 'Code', 'You are a senior prompt engineer. Transform the voice note into a single, complete, ready-to-use AI prompt written in English. Use this structure — no extra text, no JSON, no code blocks, no duplicate versions:
 
 **Role:** [specific expert persona with relevant domain]
@@ -188,11 +188,11 @@ Output ONLY the prompt. Nothing before, nothing after.', 'code', 1),
 
     // Forced update for existing installations — always overwrites to latest prompt version
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET name = 'Elegant', system_prompt = 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Return ONLY the rewritten text, nothing else.' WHERE id = 1",
+        "UPDATE transformation_profiles SET name = 'Elegant', system_prompt = 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Keep the original language. Return ONLY the rewritten text, nothing else.' WHERE id = 1",
         [],
     );
     let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Return ONLY the final message, nothing else.' WHERE id = 2",
+        "UPDATE transformation_profiles SET system_prompt = 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Keep the original language. Return ONLY the final message, nothing else.' WHERE id = 2",
         [],
     );
     let _ = conn.execute(

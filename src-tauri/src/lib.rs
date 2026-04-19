@@ -208,6 +208,7 @@ pub fn run() {
             shortcuts::start_native_key_capture,
             commands::check_accessibility_permissions,
             commands::get_active_app,
+            commands::set_pill_warning_mode,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .run(tauri::generate_context!())

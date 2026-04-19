@@ -1,14 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalSize } from "@tauri-apps/api/dpi";
 import { Locale, translations } from "../i18n";
 import { useAudioLevel } from "../hooks/useAudioLevel";
 import { useRecordingDuration } from "../hooks/useRecordingDuration";
 import { AppInfo } from "../hooks/useTranscription";
-
-const PILL_WINDOW_HEIGHT_NORMAL  = 100;
-const PILL_WINDOW_HEIGHT_WARNING = 220; // pill (28px) + gap (8px) + card (~90px) + padding
 
 interface RecorderPillProps {
   status: string;
@@ -18,145 +13,202 @@ interface RecorderPillProps {
 }
 
 export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo }: RecorderPillProps) => {
+  const isIdle      = status === "idle";
   const isRecording = status === "recording";
-  const isLoading = status === "loading" || status === "loading_whisper" || status === "loading_llama";
-  const t = translations[uiLocale];
+  const isLoading   = status === "loading" || status === "loading_whisper" || status === "loading_llama";
+  const isProcessing = status === "processing" || status === "refining";
+  const isDone      = status === "done";
+  const isActive    = !isIdle; // anything that isn't idle = pill is "inflated"
 
+  const t = translations[uiLocale];
 
   const barHeights = useAudioLevel(isRecording);
   const { progress, isWarning, timeRemaining } = useRecordingDuration(isRecording);
 
-  // Expand the window downward when warning fires so the popup card is visible.
-  // setSize alone is enough — window grows down from its current position.
-  useEffect(() => {
-    const win = getCurrentWindow();
-    win.setSize(new LogicalSize(300, isWarning ? PILL_WINDOW_HEIGHT_WARNING : PILL_WINDOW_HEIGHT_NORMAL));
-  }, [isWarning]);
+  const prevIsWarningRef = useRef(false);
 
-  const handleStop = () => invoke("stop_and_transcribe");
+  useEffect(() => {
+    if (!isRecording) {
+      if (prevIsWarningRef.current) {
+        prevIsWarningRef.current = false;
+        invoke("set_pill_warning_mode", { expand: false }).catch(() => {});
+      }
+      return;
+    }
+    if (isWarning === prevIsWarningRef.current) return;
+    prevIsWarningRef.current = isWarning;
+    invoke("set_pill_warning_mode", { expand: isWarning }).catch(() => {});
+  }, [isWarning, isRecording]);
+
+  const handleStop   = () => invoke("stop_and_transcribe");
   const handleCancel = () => invoke("cancel_recording");
 
-  if (isLoading) {
-    const label = customLabel || t.processing;
-    return (
-      <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
-          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope whitespace-nowrap">{label}</span>
-        </div>
-      </div>
-    );
-  }
+  // ── Background color per state ──────────────────────────────────────────
+  const bgColor = isWarning
+    ? "bg-amber-600/80"
+    : isIdle
+      ? "bg-primary/60"
+      : "bg-[#0A0A0A]/80";
 
-  if (status === "processing" || status === "refining") {
-    return (
-      <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center justify-center gap-2 shadow-2xl relative overflow-hidden">
-          <div className="absolute inset-0 bg-white/10 animate-pulse" />
-          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin relative z-10" />
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope relative z-10 whitespace-nowrap">{t.processing}</span>
-        </div>
-      </div>
-    );
-  }
+  // ── Size: idle = tiny bar, active = full pill ───────────────────────────
+  // We use a single element and transition width/height with CSS.
+  // The pill "inflates" from the idle bar to the full pill shape.
+  const pillSize = isIdle
+    ? "h-[6px] w-[40px]"
+    : "h-12 w-[200px] px-2";
 
-  if (status === "done") {
-    return (
-      <div className="animate-in fade-in zoom-in-95 duration-500">
-        <div className="bg-primary h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden">
-          <span className="material-symbols-outlined text-white !text-[18px] animate-in zoom-in duration-300">check_circle</span>
-          <span className="text-[10px] font-bold text-white tracking-voxa-label uppercase font-manrope">{t.sent}</span>
-        </div>
-      </div>
-    );
-  }
+  const pillStyle = {
+    transition: "all 500ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+    transformOrigin: "center",
+  };
 
-  if (isRecording) {
-    return (
-      <div className="animate-in fade-in zoom-in-95 duration-500 flex flex-col items-center gap-2">
+  return (
+    <div className={`relative flex items-center justify-center ${isIdle ? "pointer-events-none" : ""}`}>
 
-        {/* ── Pill (bottom) ── */}
-        <div
-          className={`h-7 px-3 rounded-voxa flex items-center gap-2 shadow-2xl relative overflow-hidden justify-center min-w-[100px] transition-colors duration-700 ${
-            isWarning ? 'bg-amber-600' : 'bg-primary'
-          }`}
-        >
-          <div className="absolute inset-0 bg-white/5" />
+      {/* ── Warning card — floats above via absolute, only when recording+warning ── */}
+      {isWarning && isRecording && (
+        <div className="absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 w-[300px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-400">
+          {/* Glassmorphism card with amber accent */}
+          <div className="relative rounded-[20px] overflow-hidden bg-[#0A0A0A]/90 backdrop-blur-[40px] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
 
-          {/* X — Cancel */}
-          <button
-            onClick={handleCancel}
-            className="flex-shrink-0 flex items-center justify-center text-white/70 hover:text-white transition-colors cursor-pointer group z-10"
-          >
-            <span className="material-symbols-outlined !text-[20px] group-hover:scale-110 transition-transform">close</span>
-          </button>
+            {/* Amber top accent bar */}
+            <div className="h-[3px] w-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600" />
 
-          {/* Waveform — always visible */}
-          <div className="flex items-center gap-[2px] h-5 z-10">
-            {barHeights.map((height, i) => (
-              <div
-                key={i}
-                className={`w-[2px] rounded-full ${
-                  i < 3 || i > 14 ? 'bg-white/60' :
-                  i === 3 || i === 15 ? 'bg-white/80' : 'bg-white'
-                }`}
-                style={{ height: `${height}px`, transition: 'height 40ms ease-out' }}
-              />
-            ))}
-          </div>
+            <div className="px-5 py-4 flex flex-col gap-3">
 
-          {/* App icon */}
-          {appInfo && (
-            <div title={appInfo.name} className="flex-shrink-0 z-10">
-              {appInfo.icon ? (
-                <img src={`data:image/png;base64,${appInfo.icon}`} alt={appInfo.name} className="w-5 h-5 rounded-[4px] opacity-80" />
-              ) : (
-                <div className="w-5 h-5 rounded-[4px] bg-white/20 flex items-center justify-center opacity-80">
-                  <span className="text-[9px] font-bold text-white">{appInfo.name.charAt(0).toUpperCase()}</span>
+              {/* Header row */}
+              <div className="flex items-center gap-3">
+                {/* Icon container */}
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-amber-400 !text-[20px] material-symbols-fill">timer</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Stop */}
-          <button
-            onClick={handleStop}
-            className="flex-shrink-0 flex items-center justify-center text-white/90 hover:text-white transition-colors cursor-pointer group z-10"
-          >
-            <span className="material-symbols-outlined !text-[20px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
-          </button>
-
-          {/* Duration progress bar — visible from the start, turns amber at 80% */}
-          <div
-            className={`absolute bottom-0 left-0 ${isWarning ? 'h-[5px] bg-amber-400' : 'h-[3px] bg-white/50'}`}
-            style={{ width: `${progress * 100}%`, transition: 'width 200ms linear, height 700ms ease, background-color 700ms ease' }}
-          />
-        </div>
-
-        {/* ── Warning popup card (below pill) — fades in at 80% ── */}
-        {isWarning && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300 w-[268px] bg-[#1c1c1e] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-amber-400 !text-[20px] mt-0.5 flex-shrink-0">warning</span>
-              <div className="flex flex-col gap-1">
-                <p className="text-[11px] font-bold text-white font-manrope leading-tight">
+                {/* Title */}
+                <p className="text-[13px] font-black text-white font-manrope leading-tight tracking-tight">
                   {t.recording_limit_popup_title}
                 </p>
-                <p className="text-[10px] text-white/60 font-manrope leading-snug">
+              </div>
+
+              {/* Countdown + message */}
+              <div className="flex items-center gap-3">
+                {/* Big countdown number */}
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[16px] font-black text-amber-400 font-manrope tabular-nums leading-none">
+                    {timeRemaining}
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/60 font-manrope leading-snug">
                   {t.recording_limit_popup_desc.replace('{s}', String(timeRemaining))}
                 </p>
               </div>
+
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── THE PILL — single element, always present, morphs between states ── */}
+      <div
+        className={`
+          rounded-[24px] flex items-center justify-center gap-1 relative overflow-hidden
+          ${pillSize}
+          ${bgColor}
+          ${isActive ? "shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 backdrop-blur-[40px]" : "shadow-lg"}
+        `}
+        style={pillStyle}
+      >
+        {/* Subtle inner glow overlay when active */}
+        {isActive && !isIdle && (
+          <div className="absolute inset-0 bg-white/5 pointer-events-none" />
+        )}
+
+        {/* ── IDLE: nothing inside, just the bar ── */}
+
+        {/* ── LOADING ── */}
+        {isLoading && (
+          <>
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin z-10 flex-shrink-0" />
+            <span className="text-[12px] font-bold text-white tracking-[0.15em] uppercase font-manrope whitespace-nowrap z-10">
+              {customLabel || t.processing}
+            </span>
+          </>
+        )}
+
+        {/* ── RECORDING ── */}
+        {isRecording && (
+          <>
+            {/* Cancel */}
+            <button
+              onClick={handleCancel}
+              className="flex-shrink-0 flex items-center justify-center text-white/70 hover:text-white transition-colors cursor-pointer group z-10"
+            >
+              <span className="material-symbols-outlined !text-[28px] group-hover:scale-110 transition-transform">close</span>
+            </button>
+
+            {/* Waveform */}
+            <div className="flex items-center gap-[2px] h-8 z-10 flex-shrink-0">
+              {barHeights.map((height, i) => (
+                <div
+                  key={i}
+                  className={`w-[2.5px] rounded-full ${
+                    i < 2 || i > 15 ? "bg-white/40" :
+                    i < 4 || i > 13 ? "bg-white/60" :
+                    i < 6 || i > 11 ? "bg-white/80" :
+                    "bg-white"
+                  }`}
+                  style={{ height: `${height}px`, transition: "height 40ms ease-out" }}
+                />
+              ))}
+            </div>
+
+            {/* App icon */}
+            {appInfo && (
+              <div title={appInfo.name} className="flex-shrink-0 z-10">
+                {appInfo.icon ? (
+                  <img src={`data:image/png;base64,${appInfo.icon}`} alt={appInfo.name} className="w-8 h-8 rounded-[6px] opacity-90" />
+                ) : (
+                  <div className="w-8 h-8 rounded-[6px] bg-white/20 flex items-center justify-center opacity-90">
+                    <span className="text-[12px] font-bold text-white">{appInfo.name.charAt(0).toUpperCase()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Stop */}
+            <button
+              onClick={handleStop}
+              className="flex-shrink-0 flex items-center justify-center text-white/90 hover:text-white transition-colors cursor-pointer group z-10"
+            >
+              <span className="material-symbols-outlined !text-[28px] material-symbols-fill group-hover:scale-110 transition-transform">stop</span>
+            </button>
+
+            {/* Progress bar */}
+            <div
+              className={`absolute bottom-0 left-0 ${isWarning ? "h-[5px] bg-amber-400" : "h-[3px] bg-white/50"}`}
+              style={{ width: `${progress * 100}%`, transition: "width 200ms linear, height 700ms ease, background-color 700ms ease" }}
+            />
+          </>
+        )}
+
+        {/* ── PROCESSING / REFINING ── */}
+        {isProcessing && (
+          <>
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white/80 rounded-full animate-spin z-10 flex-shrink-0" />
+            <span className="ml-2 text-[12px] font-bold text-white tracking-[0.15em] uppercase font-manrope z-10 whitespace-nowrap">
+              {t.processing}
+            </span>
+          </>
+        )}
+
+        {/* ── DONE ── */}
+        {isDone && (
+          <>
+            <span className="material-symbols-outlined text-primary !text-[24px] z-10 animate-in zoom-in duration-300">check_circle</span>
+            <span className="text-[12px] font-bold text-white tracking-[0.15em] uppercase font-manrope z-10">
+              {t.sent}
+            </span>
+          </>
         )}
       </div>
-    );
-  }
-
-  // IDLE — non-interactive thin bar, clicks pass through to system
-  return (
-    <div className="animate-in fade-in zoom-in-95 duration-500 pointer-events-none">
-      <div className="bg-primary h-[6px] w-[40px] rounded-voxa shadow-lg" />
     </div>
   );
 };
