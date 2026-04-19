@@ -81,7 +81,23 @@ When two agents need to touch the same file, the one who merges second resolves 
 
 ---
 
-## Coordination Rules (learned from incident — April 2025)
+## Working Directory Rules
+
+**Kiro** works in the main project directory (`/path/to/voxa/`).  
+**Claude** MUST use a git worktree in a separate directory for every branch it owns.
+
+```bash
+# Claude's correct workflow — never touch Kiro's working directory
+git worktree add ../voxa-claude bugfix/issue-{id}-{desc}
+# work inside ../voxa-claude, then push and open PR
+git worktree remove ../voxa-claude   # clean up after merge
+```
+
+**Never** run `git stash` or `git checkout` in the shared working directory — this disrupts whichever agent is actively working there.
+
+---
+
+## Coordination Rules (learned from incidents — April 2025)
 
 1. **`main` must always compile.** Before opening a PR that touches Rust, run `cargo check` locally.
 2. **Never merge a PR to a feature branch and call it done.** PRs go to `main`. If a feature branch is used as integration, it must itself be merged to `main` before starting dependent work.
@@ -103,3 +119,4 @@ When two agents need to touch the same file, the one who merges second resolves 
 - Direct push to `main` → blocked by branch protection
 - Commits without issue reference → untraceable changes
 - Starting new work while `main` is broken → compounding problems
+- Claude running `git stash` / `git checkout` in the shared directory → disrupts Kiro's in-progress work
