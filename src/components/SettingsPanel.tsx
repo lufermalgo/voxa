@@ -291,12 +291,6 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
               </button>
             ))}
           </nav>
-          <div className="px-4 pb-2">
-            <p className="text-[9px] text-on-surface-variant/80 leading-relaxed">
-              <span className="text-on-surface-variant font-bold">Cmd+L</span>{' '}
-              {t.tip_text.replace(/.*Cmd\+L\s*/i, '')}
-            </p>
-          </div>
         </aside>
 
         {/* ── CONTENT AREA ── px-10 py-8, sin max-w */}
