@@ -88,6 +88,29 @@ When two agents need to touch the same file, the one who merges second resolves 
 | `.claude/` | Claude | Kiro never touches. Contains Claude Code config and worktrees. |
 | `.kiro/` | Kiro | Claude never touches. Contains Kiro specs and steering files. |
 
+### Agent Status Files (MANDATORY)
+
+Each agent maintains a status file in its own directory. The other agent **reads but never writes** to it.
+
+| File | Owner | Reader |
+|------|-------|--------|
+| `.kiro/status.md` | Kiro | Claude reads before starting any task |
+| `.claude/status.md` | Claude | Kiro reads before starting any task |
+
+**Rules:**
+1. **Before starting any task**, read the other agent's status file to check for conflicts (shared files, blocking PRs, broken main).
+2. **Update your own status file** whenever you: start a new issue, open a PR, finish a rebase, change branches, or go idle.
+3. Format is free-form Markdown — keep it short and scannable (a table of current state + list of files being touched).
+4. If the other agent's status shows they are touching a shared file (`src/hooks/`, `src/i18n.ts`), coordinate before editing it.
+5. If the other agent's status is stale (>24h without update), proceed with caution and note it.
+
+**Required fields in status file:**
+- Current branch and issue number
+- Status: `idle` | `in-progress` | `pr-open` | `awaiting-review` | `blocked`
+- Last rebase commit from main
+- Files being touched
+- Pending PR number (if any)
+
 ---
 
 ## Working Directory Rules
@@ -129,3 +152,5 @@ git worktree remove .claude/worktrees/issue-{id}   # clean up after merge
 - Commits without issue reference → untraceable changes
 - Starting new work while `main` is broken → compounding problems
 - Claude running `git stash` / `git checkout` in the shared directory → disrupts Kiro's in-progress work
+- Starting work without reading the other agent's status file → file conflicts, wasted effort
+- Forgetting to update your own status file → stale data misleads the other agent
