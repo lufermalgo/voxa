@@ -651,16 +651,16 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                   </div>
                   <button
                     onClick={() => { const next = settings.auto_detect_profile !== "true" ? "true" : "false"; updateSetting("auto_detect_profile" as keyof AppSettings, next); }}
-                    className={`relative w-[44px] h-[26px] rounded-full transition-all duration-200 flex-shrink-0 border ${
+                    className={`relative w-[46px] h-[28px] rounded-full transition-all duration-200 flex-shrink-0 ${
                       settings.auto_detect_profile !== "false"
-                        ? "bg-primary border-primary shadow-sm shadow-primary/20"
-                        : "bg-surface-container-high border-on-surface/[0.15]"
+                        ? "bg-primary"
+                        : "bg-surface-container-highest border border-on-surface/[0.15]"
                     }`}
                     role="switch"
                     aria-checked={settings.auto_detect_profile !== "false"}
                   >
-                    <span className={`absolute top-[3px] w-[20px] h-[20px] rounded-full bg-white shadow-md transition-transform duration-200 ${
-                      settings.auto_detect_profile !== "false" ? "translate-x-[21px]" : "translate-x-[3px]"
+                    <span className={`absolute top-[4px] left-[4px] w-[20px] h-[20px] rounded-full bg-white shadow transition-transform duration-200 ${
+                      settings.auto_detect_profile !== "false" ? "translate-x-[18px]" : "translate-x-0"
                     }`} />
                   </button>
                 </div>
