@@ -350,8 +350,42 @@ fn extract_new_words(raw: &str, corrected: &str) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Active app query
+// Pill window resize (warning card expand/collapse)
 // ---------------------------------------------------------------------------
+
+/// Expands the pill window upward by `extra_height` physical pixels,
+/// moving the window position up by the same amount so the pill stays fixed.
+/// Call with expand=true to show warning card, expand=false to collapse.
+#[tauri::command]
+pub fn set_pill_warning_mode(app: tauri::AppHandle, expand: bool) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("main window not found")?;
+    let extra_height: i32 = 200; // physical pixels for the warning card
+
+    let current_pos = window.outer_position().map_err(|e| e.to_string())?;
+    let current_size = window.outer_size().map_err(|e| e.to_string())?;
+
+    if expand {
+        // Move window up by extra_height, increase height by extra_height
+        let new_y = current_pos.y - extra_height;
+        let new_height = current_size.height as i32 + extra_height;
+        window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(current_pos.x, new_y)))
+            .map_err(|e| e.to_string())?;
+        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(current_size.width, new_height as u32)))
+            .map_err(|e| e.to_string())?;
+    } else {
+        // Move window down by extra_height, decrease height by extra_height
+        let new_y = current_pos.y + extra_height;
+        let new_height = (current_size.height as i32 - extra_height).max(80) as u32;
+        window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(current_pos.x, new_y)))
+            .map_err(|e| e.to_string())?;
+        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(current_size.width, new_height)))
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+
 
 /// Returns the frontmost app's name and icon (base64 PNG) on demand.
 /// Useful for displaying app context in UI without waiting for a recording event.
