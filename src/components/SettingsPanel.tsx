@@ -651,9 +651,7 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
   );
 }
 
-// ── DICTIONARY SECTION ── add at top, paginated 2-column grid
-const DICT_PAGE_SIZE = 10;
-
+// ── DICTIONARY SECTION ── tags view with inline edit
 function DictionarySection({ dictionaryEntries, newWord, setNewWord, addWord, removeWord, updateReplacement, t }: {
   dictionaryEntries: any[];
   newWord: string;
@@ -663,9 +661,18 @@ function DictionarySection({ dictionaryEntries, newWord, setNewWord, addWord, re
   updateReplacement: (word: string, replacement: string | null) => void;
   t: any;
 }) {
-  const [page, setPage] = useState(0);
-  const totalPages = Math.ceil(dictionaryEntries.length / DICT_PAGE_SIZE);
-  const pageEntries = dictionaryEntries.slice(page * DICT_PAGE_SIZE, (page + 1) * DICT_PAGE_SIZE);
+  const [editingWord, setEditingWord] = useState<string | null>(null);
+  const [editReplacement, setEditReplacement] = useState("");
+
+  const openEdit = (entry: any) => {
+    setEditingWord(entry.word);
+    setEditReplacement(entry.replacement_word ?? "");
+  };
+
+  const saveEdit = (word: string) => {
+    updateReplacement(word, editReplacement.trim() || null);
+    setEditingWord(null);
+  };
 
   return (
     <section>
@@ -703,73 +710,64 @@ function DictionarySection({ dictionaryEntries, newWord, setNewWord, addWord, re
           <p className="text-[11px] text-on-surface-variant font-semibold uppercase tracking-[0.2em]">{t.dictionary_empty}</p>
         </div>
       ) : (
-        <>
-          {/* Column headers */}
-          <div className="grid grid-cols-2 gap-3 mb-2">
-            {[0, 1].map(col => (
-              <div key={col} className="flex items-center gap-3 px-3 pb-1 border-b border-on-surface/[0.10]">
-                <span className="flex-1 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.word ?? "Word"}</span>
-                <span className="w-16 text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.replacement ?? "Replacement"}</span>
-                <span className="w-8 text-right text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{t.usage ?? "Uses"}</span>
-                <span className="w-5" />
+        <div>
+          {/* Tags cloud */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {dictionaryEntries.map(entry => (
+              <div key={entry.word} className="group relative">
+                <div
+                  onClick={() => openEdit(entry)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border cursor-pointer transition-all ${
+                    editingWord === entry.word
+                      ? 'bg-primary/10 border-primary/40 text-primary'
+                      : 'bg-surface-container border-on-surface/[0.12] text-on-surface hover:bg-surface-container-high hover:border-primary/30'
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{entry.word}</span>
+                  {entry.replacement_word && (
+                    <span className="text-[10px] text-on-surface-variant">→ {entry.replacement_word}</span>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeWord(entry.word); }}
+                    className="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-error/15 hover:text-error text-on-surface-variant transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">close</span>
+                  </button>
+                </div>
+
+                {/* Inline edit popover */}
+                {editingWord === entry.word && (
+                  <div className="absolute top-full left-0 mt-1 z-10 bg-surface-container-lowest rounded-xl shadow-lg border border-on-surface/[0.10] p-3 min-w-[220px] animate-in zoom-in-95 duration-150">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-2">
+                      Corrección para <span className="text-on-surface">"{entry.word}"</span>
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editReplacement}
+                        onChange={(e) => setEditReplacement(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(entry.word); if (e.key === 'Escape') setEditingWord(null); }}
+                        placeholder="Dejar vacío para quitar"
+                        className="flex-1 bg-surface-container rounded-lg px-2.5 py-1.5 text-xs text-on-surface border border-on-surface/[0.10] focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-on-surface-variant/50"
+                      />
+                      <button
+                        onClick={() => saveEdit(entry.word)}
+                        className="px-3 py-1.5 bg-primary text-background rounded-lg text-[10px] font-black hover:bg-primary/90 transition-all"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
 
-          {/* 2-column grid of entries */}
-          <div className="grid grid-cols-2 gap-x-3">
-            {pageEntries.map(entry => (
-              <div key={entry.word} className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container transition-colors min-h-[40px] border-b border-on-surface/[0.06]">
-                <span className="flex-1 text-sm font-semibold text-on-surface truncate">{entry.word}</span>
-                <input
-                  type="text"
-                  placeholder="—"
-                  defaultValue={entry.replacement_word ?? ""}
-                  onBlur={(e) => { const val = e.target.value.trim() || null; updateReplacement(entry.word, val); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  className="w-16 bg-transparent text-xs text-on-surface-variant focus:outline-none focus:bg-surface-container-high rounded px-1 py-0.5 transition-colors placeholder:text-on-surface-variant/40"
-                />
-                <span className="w-8 text-right">
-                  {entry.usage_count > 0
-                    ? <span className="text-[10px] font-bold text-primary">{entry.usage_count}</span>
-                    : <span className="text-on-surface-variant/40 text-[10px]">—</span>
-                  }
-                </span>
-                <button
-                  onClick={() => removeWord(entry.word)}
-                  className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 text-on-surface-variant hover:text-error hover:bg-error/10 transition-all"
-                >
-                  <span className="material-symbols-outlined text-[14px]">close</span>
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-on-surface/[0.08]">
-              <span className="text-[11px] text-on-surface-variant">
-                {page * DICT_PAGE_SIZE + 1}–{Math.min((page + 1) * DICT_PAGE_SIZE, dictionaryEntries.length)} de {dictionaryEntries.length}
-              </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant text-[11px] font-semibold border border-on-surface/[0.10] hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                >
-                  ← Anterior
-                </button>
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant text-[11px] font-semibold border border-on-surface/[0.10] hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                >
-                  Siguiente →
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+          <p className="text-[10px] text-on-surface-variant/70 mt-2">
+            Haz click en una palabra para definir una corrección automática. La × la elimina del diccionario.
+          </p>
+        </div>
       )}
     </section>
   );
