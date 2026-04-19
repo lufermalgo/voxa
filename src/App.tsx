@@ -1,4 +1,5 @@
 import { useTranscription } from "./hooks/useTranscription";
+import { useProfiles } from "./hooks/useProfiles";
 import { RecorderPill } from "./components/RecorderPill";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -10,7 +11,8 @@ import { Locale, translations } from "./i18n";
 import "./App.css";
 
 function App() {
-  const { status, appInfo } = useTranscription();
+  const { status, rawText, refinedText, appInfo, activeProfile } = useTranscription();
+  const profiles = useProfiles();
   const [windowLabel, setWindowLabel] = useState<string>(() => getCurrentWindow().label);
   const [activeTab, setActiveTab] = useState<string>("general");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -114,6 +116,10 @@ function App() {
           label={isDownloading ? downloadStatus : undefined}
           uiLocale={uiLocale}
           appInfo={appInfo}
+          refinedText={refinedText}
+          rawText={rawText}
+          activeProfile={activeProfile}
+          profiles={profiles}
         />
       </div>
     );

@@ -31,6 +31,7 @@ pub struct AppInfo {
 
 pub struct FrontmostApp(pub Mutex<AppInfo>);
 pub struct ManualProfileOverride(pub Mutex<Option<String>>); // profile name set explicitly by user this session
+pub struct DetectedProfile(pub Mutex<Option<(String, String)>>); // (system_prompt, profile_name)
 
 pub struct EngineState {
     pub whisper: Mutex<Option<whisper_inference::WhisperEngine>>,
@@ -110,14 +111,19 @@ fn bundle_id_to_profile_keyword(bundle_id: &str) -> Option<&'static str> {
 /// Maps a browser tab domain to a profile keyword.
 fn domain_to_profile_keyword(domain: &str) -> Option<&'static str> {
     let d = domain;
-    if d == "mail.google.com" || d.contains("outlook.") || d.contains("fastmail")
-        || d.contains("protonmail") { return Some("Informal"); }
+    // Code contexts — dev tools and AI assistants
     if d == "github.com" || d == "gitlab.com" || d.ends_with(".atlassian.net")
         || d == "linear.app" || d == "bitbucket.org" { return Some("Code"); }
-    if d == "notion.so" || d == "docs.google.com" || d == "coda.io"
-        || d.contains("confluence") { return Some("Elegant"); }
+    if d == "claude.ai" || d == "chat.openai.com" || d == "chatgpt.com" {
+        return Some("Code");
+    }
+    // Informal / chat
     if d.ends_with(".slack.com") || d == "discord.com" || d == "twitter.com"
         || d == "x.com" || d == "linkedin.com" { return Some("Informal"); }
+    // Elegant / formal writing — email is formal, not informal
+    if d == "mail.google.com" || d.contains("outlook.") || d == "outlook.com"
+        || d == "notion.so" || d == "docs.google.com" || d == "coda.io"
+        || d.contains("confluence") { return Some("Elegant"); }
     None
 }
 
@@ -134,7 +140,16 @@ pub fn detect_profile_keyword_for_pid(pid: i32) -> Option<&'static str> {
     // 2. For browsers, match by active tab domain
     #[cfg(target_os = "macos")]
     if crate::event_tap::is_browser_bundle_id(&bundle_id) {
-        if let Some(url) = crate::event_tap::get_browser_tab_url(pid, &bundle_id) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let bid_clone = bundle_id.clone();
+        std::thread::spawn(move || {
+            let result = crate::event_tap::get_browser_tab_url(pid, &bid_clone);
+            let _ = tx.send(result);
+        });
+        let url_opt = rx.recv_timeout(std::time::Duration::from_millis(50))
+            .ok()
+            .flatten();
+        if let Some(url) = url_opt {
             if let Some(domain) = crate::event_tap::domain_from_url(&url) {
                 log::debug!("Auto-profile: browser domain={}", domain);
                 if let Some(kw) = domain_to_profile_keyword(&domain) {
@@ -174,19 +189,22 @@ fn run_llm_refinement(
 // Profile resolution
 // ---------------------------------------------------------------------------
 
-/// Resolves the system_prompt to use for this dictation.
+/// Resolves the composed system_prompt (base + formatting block) for this dictation.
 /// Priority: manual override > auto-detected by bundle ID > active_profile_id setting.
+/// Returns (composed_prompt, profile_name).
 fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (String, String) {
     let conn = db_state.conn.lock().unwrap();
+    let language = app
+        .state::<db::SettingsCache>()
+        .get("language")
+        .unwrap_or_else(|| "es".to_string());
 
-    // Check if auto-detect is enabled in settings
     let auto_detect_enabled = app
         .state::<db::SettingsCache>()
         .get("auto_detect_profile")
         .map(|v| v != "false")
         .unwrap_or(true);
 
-    // Check manual override
     let manual_override = app
         .state::<ManualProfileOverride>()
         .0
@@ -194,32 +212,34 @@ fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (Str
         .unwrap()
         .clone();
 
-    if let Some(ref name) = manual_override {
-        // User explicitly chose a profile — find it by name
-        if let Ok(profiles) = db::get_profiles(&conn) {
-            if let Some(p) = profiles.into_iter().find(|p| &p.name == name) {
-                return (p.system_prompt, p.name);
-            }
-        }
-    }
-
-    if auto_detect_enabled {
+    let profile = if let Some(ref name) = manual_override {
+        db::get_profiles(&conn).ok()
+            .and_then(|ps| ps.into_iter().find(|p| &p.name == name))
+    } else if auto_detect_enabled {
         let pid = app.state::<FrontmostApp>().0.lock().unwrap().pid;
-        if let Some(keyword) = detect_profile_keyword_for_pid(pid) {
-            if let Ok(profiles) = db::get_profiles(&conn) {
-                if let Some(p) = profiles.into_iter().find(|p| p.name == keyword) {
-                    log::info!("Auto-profile: matched '{}' for PID {}", keyword, pid);
-                    return (p.system_prompt, p.name);
-                }
-            }
-        }
-    }
+        detect_profile_keyword_for_pid(pid).and_then(|keyword| {
+            db::get_profiles(&conn).ok()
+                .and_then(|ps| ps.into_iter().find(|p| p.name == keyword))
+                .inspect(|p| log::info!("Auto-profile: matched '{}' for PID {}", p.name, pid))
+        })
+    } else {
+        None
+    };
 
-    // Fall back to the user's currently selected profile
-    let p = db::get_active_profile(&conn).unwrap_or_default();
-    let name = p.as_ref().map(|x| x.name.clone()).unwrap_or_default();
-    let prompt = p.map(|x| x.system_prompt).unwrap_or_default();
-    (prompt, name)
+    let profile = profile.or_else(|| {
+        db::get_active_profile(&conn).unwrap_or_default()
+    });
+
+    let (base_prompt, profile_name, formatting_mode, profile_id) = match profile {
+        Some(p) => (p.system_prompt, p.name, p.formatting_mode, p.id),
+        None => (String::new(), String::new(), "plain".to_string(), 0),
+    };
+
+    let hints = db::get_active_hints(&conn, profile_id).unwrap_or_default();
+    let formatting_block = crate::formatting::build_formatting_block(&formatting_mode, &language, &hints);
+    let composed = format!("{}\n\n{}", base_prompt, formatting_block);
+
+    (composed, profile_name)
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +282,24 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                     }));
                                     *app.state::<FrontmostApp>().0.lock().unwrap() = info;
                                 }
+                                // Resolve and cache the profile for this recording session.
+                                // Must happen AFTER FrontmostApp is updated so detect_profile_keyword_for_pid
+                                // reads the correct PID.
+                                let db_state = app.state::<DbState>();
+                                let resolved = resolve_system_prompt(&app, &db_state);
+                                let is_auto = {
+                                    let has_override = app.state::<ManualProfileOverride>().0.lock().unwrap().is_some();
+                                    let auto_enabled = app.state::<db::SettingsCache>()
+                                        .get("auto_detect_profile")
+                                        .map(|v| v != "false")
+                                        .unwrap_or(true);
+                                    !has_override && auto_enabled
+                                };
+                                let _ = app.emit("profile-detected", serde_json::json!({
+                                    "name": resolved.1,
+                                    "is_auto": is_auto,
+                                }));
+                                *app.state::<DetectedProfile>().0.lock().unwrap() = Some(resolved);
                                 app.state::<RecordingState>().0.store(true, Ordering::SeqCst);
                                 if let Some(win) = app.get_webview_window("main") {
                                     let _ = win.set_ignore_cursor_events(false);
@@ -495,7 +533,9 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                         );
                                         *llama_lock = Some(e);
                                         let llama = llama_lock.as_mut().unwrap();
-                                        let (system_prompt, _) = resolve_system_prompt(&app, &db_state);
+                                        let (system_prompt, _) = app.state::<DetectedProfile>().0.lock().unwrap()
+                                            .clone()
+                                            .unwrap_or_else(|| resolve_system_prompt(&app, &db_state));
                                         if system_prompt.is_empty() {
                                             raw_text.clone()
                                         } else {
@@ -517,7 +557,9 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                             }
                         } else {
                             let llama = llama_lock.as_mut().unwrap();
-                            let (system_prompt, profile_name) = resolve_system_prompt(&app, &db_state);
+                            let (system_prompt, profile_name) = app.state::<DetectedProfile>().0.lock().unwrap()
+                                .clone()
+                                .unwrap_or_else(|| resolve_system_prompt(&app, &db_state));
                             log::info!(
                                 "LLM Profile: '{}' | Prompt[:80]: {}",
                                 profile_name,
@@ -562,6 +604,8 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     crate::event_tap::simulate_paste();
 
                     let _ = app.emit("pipeline-results", &refined_text);
+                    // Clear the cached profile — next recording will detect fresh.
+                    *app.state::<DetectedProfile>().0.lock().unwrap() = None;
                     let _ = app.emit("pipeline-status", "idle");
                 }
 
@@ -573,6 +617,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     let audio_engine = app.state::<AudioEngine>();
                     let mic_id = app.state::<SettingsCache>().get("mic_id");
                     let _ = audio::stop_stream(&audio_engine, mic_id);
+                    *app.state::<DetectedProfile>().0.lock().unwrap() = None;
                     let _ = app.emit("pipeline-status", "idle");
                 }
             }

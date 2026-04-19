@@ -9,6 +9,7 @@ extern crate objc;
 mod audio;
 mod commands;
 mod db;
+mod formatting;
 mod vad;
 mod event_tap;
 mod llama_inference;
@@ -22,7 +23,7 @@ mod window_utils;
 use crate::audio::AudioEngine;
 use crate::db::{DbState, SettingsCache};
 use crate::pipeline::{
-    CursorContext, DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
+    CursorContext, DetectedProfile, DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
     PipelineHandle, RecordingState,
 };
 use crate::shortcuts::{NativeShortcuts, NATIVE_SHORTCUTS};
@@ -111,6 +112,7 @@ pub fn run() {
             app.manage(RecordingState(AtomicBool::new(false)));
             app.manage(FrontmostApp(Mutex::new(pipeline::AppInfo::default())));
             app.manage(ManualProfileOverride(Mutex::new(None)));
+            app.manage(DetectedProfile(Mutex::new(None)));
             app.manage(PipelineHandle { cancelled: Arc::new(AtomicBool::new(false)) });
             app.manage(CursorContext {
                 pre_text:  Mutex::new(String::new()),
@@ -195,8 +197,10 @@ pub fn run() {
             commands::update_replacement_word,
             commands::update_transcript,
             commands::update_profile,
+            commands::update_profile_formatting_mode,
             commands::create_profile,
             commands::delete_profile,
+            commands::submit_correction,
             models::check_models_status,
             models::download_models,
             models::get_models_info,
