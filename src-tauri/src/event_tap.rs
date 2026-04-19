@@ -465,6 +465,8 @@ pub fn web_app_name_from_domain(domain: &str) -> Option<&'static str> {
     if d == "youtube.com" || d.ends_with(".youtube.com") { return Some("YouTube"); }
     if d == "claude.ai"                                  { return Some("Claude"); }
     if d == "chat.openai.com" || d == "chatgpt.com"      { return Some("ChatGPT"); }
+    if d == "aistudio.google.com"                        { return Some("AI Studio"); }
+    if d == "gemini.google.com"                          { return Some("Gemini"); }
     if d.contains("outlook.")  || d == "outlook.com"     { return Some("Outlook"); }
     if d.ends_with(".atlassian.net") && d.starts_with("jira") { return Some("Jira"); }
     if d.ends_with(".atlassian.net")                     { return Some("Confluence"); }

@@ -124,9 +124,8 @@ fn domain_to_profile_keyword(domain: &str) -> Option<&'static str> {
     // Code contexts — dev tools and AI assistants
     if d == "github.com" || d == "gitlab.com" || d.ends_with(".atlassian.net")
         || d == "linear.app" || d == "bitbucket.org" { return Some("Code"); }
-    if d == "claude.ai" || d == "chat.openai.com" || d == "chatgpt.com" {
-        return Some("Code");
-    }
+    if d == "claude.ai" || d == "chat.openai.com" || d == "chatgpt.com"
+        || d.contains("aistudio.google.com") { return Some("Code"); }
     // Informal / chat
     if d.ends_with(".slack.com") || d == "discord.com" || d == "twitter.com"
         || d == "x.com" || d == "linkedin.com" { return Some("Informal"); }
@@ -135,6 +134,23 @@ fn domain_to_profile_keyword(domain: &str) -> Option<&'static str> {
         || d == "notion.so" || d == "docs.google.com" || d == "coda.io"
         || d.contains("confluence") { return Some("Elegant"); }
     None
+}
+
+/// Maps a resolved web app name (from get_app_info_for_pid) to a profile keyword.
+/// This avoids a second AX read — the name was already resolved from the URL.
+fn web_app_name_to_profile_keyword(name: &str) -> Option<&'static str> {
+    match name {
+        // Code / dev tools
+        "GitHub" | "GitLab" | "Linear" | "Jira" | "Confluence" | "Bitbucket"
+        | "Claude" | "ChatGPT" | "AI Studio" | "Gemini" | "Coda" => Some("Code"),
+        // Elegant / formal
+        "Gmail" | "Outlook" | "Google Docs" | "Google Sheets" | "Google Slides"
+        | "Notion" | "Airtable" | "Trello" => Some("Elegant"),
+        // Informal / chat
+        "Slack" | "Discord" | "X" | "LinkedIn" | "Reddit" => Some("Informal"),
+        // Unknown web app name or native app — fall through to bundle ID detection
+        _ => None,
+    }
 }
 
 /// Given a PID, returns the best matching profile name (keyword) or None if no match.
@@ -226,11 +242,21 @@ fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (Str
         db::get_profiles(&conn).ok()
             .and_then(|ps| ps.into_iter().find(|p| &p.name == name))
     } else if auto_detect_enabled {
-        let pid = app.state::<FrontmostApp>().0.lock().unwrap().pid;
-        detect_profile_keyword_for_pid(pid).and_then(|keyword| {
+        let frontmost = app.state::<FrontmostApp>().0.lock().unwrap().clone();
+        let pid = frontmost.pid;
+
+        // For browsers: get_app_info_for_pid already resolved the web app name
+        // (e.g. "Gmail", "GitHub") via AX URL reading. Use that name to map to
+        // a domain-based keyword — avoids a second AX read with a tight timeout.
+        let keyword_from_web_app = web_app_name_to_profile_keyword(&frontmost.name);
+
+        let keyword = keyword_from_web_app
+            .or_else(|| detect_profile_keyword_for_pid(pid));
+
+        keyword.and_then(|keyword| {
             db::get_profiles(&conn).ok()
                 .and_then(|ps| ps.into_iter().find(|p| p.name == keyword))
-                .inspect(|p| log::info!("Auto-profile: matched '{}' for PID {}", p.name, pid))
+                .inspect(|p| log::info!("Auto-profile: matched '{}' for PID {} (app='{}')", p.name, pid, frontmost.name))
         })
     } else {
         None
