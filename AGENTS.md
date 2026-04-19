@@ -79,6 +79,15 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 
 When two agents need to touch the same file, the one who merges second resolves conflicts.
 
+### Tooling & State directories
+
+| Directory | Owner | Rule |
+|-----------|-------|------|
+| `.aind/` | Claude | Kiro reads freely, never writes. Claude owns all spec and state files. |
+| `.aind/specs/[module]/` | Claude | One spec folder per module. Claude creates and maintains them. |
+| `.claude/` | Claude | Kiro never touches. Contains Claude Code config and worktrees. |
+| `.kiro/` | Kiro | Claude never touches. Contains Kiro specs and steering files. |
+
 ---
 
 ## Working Directory Rules
@@ -88,9 +97,9 @@ When two agents need to touch the same file, the one who merges second resolves 
 
 ```bash
 # Claude's correct workflow — never touch Kiro's working directory
-git worktree add ../voxa-claude bugfix/issue-{id}-{desc}
-# work inside ../voxa-claude, then push and open PR
-git worktree remove ../voxa-claude   # clean up after merge
+git worktree add .claude/worktrees/issue-{id} bugfix/issue-{id}-{desc}
+# work inside .claude/worktrees/issue-{id}, then push and open PR
+git worktree remove .claude/worktrees/issue-{id}   # clean up after merge
 ```
 
 **Never** run `git stash` or `git checkout` in the shared working directory — this disrupts whichever agent is actively working there.
