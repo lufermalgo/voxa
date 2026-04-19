@@ -53,7 +53,6 @@ pub struct ModelsStateInfo {
 pub struct ModelManager {
     pub base_path: PathBuf,
     pub is_downloading: std::sync::atomic::AtomicBool,
-    pub gpu_available: bool,
 }
 
 impl ModelManager {
@@ -63,12 +62,10 @@ impl ModelManager {
         if !models_dir.exists() {
             fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models directory: {}", e))?;
         }
-        let gpu_available = detect_gpu();
-        log::info!("GPU detected: {}", gpu_available);
+        log::info!("GPU detected: {}", detect_gpu());
         Ok(Self {
             base_path: models_dir,
             is_downloading: std::sync::atomic::AtomicBool::new(false),
-            gpu_available,
         })
     }
 
