@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+use std::fs::File;
 
 /// Finds a free localhost port by asking the OS to assign one.
 fn find_free_port() -> u16 {
@@ -27,10 +28,15 @@ impl LlamaEngine {
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("99")       // offload all layers to GPU (Metal/CUDA); CPU fallback is automatic
             .arg("--ctx-size").arg("4096")
-            .arg("--log-disable")
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::null());
+
+        // Capture stderr to diagnose slowness
+        if let Ok(stderr_file) = File::create("/tmp/llama-server.log") {
+            cmd.stderr(stderr_file);
+        } else {
+            cmd.stderr(Stdio::null());
+        }
 
         // Flash Attention and memory locking are Metal-specific optimizations.
         // --flash-attn: 20-40% speedup on attention layers via Metal.
