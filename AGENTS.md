@@ -100,9 +100,36 @@ Each agent maintains a status file in its own directory. The other agent **reads
 **Rules:**
 1. **Before starting any task**, read the other agent's status file to check for conflicts (shared files, blocking PRs, broken main).
 2. **Update your own status file** whenever you: start a new issue, open a PR, finish a rebase, change branches, or go idle.
-3. Format is free-form Markdown — keep it short and scannable (a table of current state + list of files being touched).
+3. Both agents use the **same template** (below) — the only difference is Claude includes `Worktree`.
 4. If the other agent's status shows they are touching a shared file (`src/hooks/`, `src/i18n.ts`), coordinate before editing it.
 5. If the other agent's status is stale (>24h without update), proceed with caution and note it.
+
+**Status file template (mandatory for both agents):**
+
+```markdown
+# [Agent] Status
+
+> Last updated: YYYY-MM-DD
+
+## Current Work
+
+| Field | Value |
+|-------|-------|
+| Status | `idle` \| `in-progress` \| `pr-open` \| `awaiting-review` \| `blocked` |
+| Issue | #N |
+| Branch | `type/issue-N-desc` |
+| Worktree | `.claude/worktrees/issue-N`  ← Claude only, omit if Kiro |
+| PR | #N — título (omit if none) |
+| Last rebase from main | `commit-sha` |
+
+## Files Touching
+
+- `path/to/file.ext`
+
+## Notes
+
+- Una línea por nota relevante.
+```
 
 **Required fields in status file:**
 - Current branch and issue number
