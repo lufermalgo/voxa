@@ -44,6 +44,6 @@ Implementación del rediseño editorial del `SettingsPanel.tsx`. Cada tarea es i
   - [ ] 7.2 Mover path a row inline con botones de copiar y abrir carpeta
   - [ ] 7.3 Reducir progress bar a 3px con glow sutil
 
-- [ ] 8. Confirm Modal — glassmorphism coherente
+- [x] 8. Confirm Modal — glassmorphism coherente
   - [ ] 8.1 Actualizar modal a rounded-2xl, backdrop-blur-2xl, ring-1 ring-white/[0.06]
   - [ ] 8.2 Ajustar animación de entrada a zoom-in-95 fade-in duration-150
