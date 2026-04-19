@@ -77,32 +77,20 @@ impl ModelManager {
     }
 
     pub fn get_llama_filename(&self) -> &'static str {
-        if self.gpu_available {
-            "qwen2.5-3b-instruct-q4_k_m.gguf"
-        } else {
-            "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-        }
+        "qwen2.5-1.5b-instruct-q4_k_m.gguf"
     }
 
     pub fn get_llama_display_name(&self) -> &'static str {
-        if self.gpu_available {
-            "Qwen2.5-3B (Refinement, GPU)"
-        } else {
-            "Qwen2.5-1.5B (Refinement, CPU)"
-        }
+        "Qwen2.5-1.5B (Refinement, GPU)"
     }
 
     /// Short name used in download progress pill — keep it brief.
     pub fn get_llama_short_name(&self) -> &'static str {
-        if self.gpu_available { "Qwen2.5-3B" } else { "Qwen2.5-1.5B" }
+        "Qwen2.5-1.5B"
     }
 
     pub fn get_llama_download_url(&self) -> &'static str {
-        if self.gpu_available {
-            "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
-        } else {
-            "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
-        }
+        "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
     }
 
     pub fn get_llama_path(&self) -> PathBuf {

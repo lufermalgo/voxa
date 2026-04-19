@@ -53,12 +53,15 @@ impl LlamaEngine {
         // On M3 with Metal, Qwen2.5-1.5B Q4_K_M loads in ~1-2s.
         let health_url = format!("http://127.0.0.1:{}/health", port);
         let mut ready = false;
-        for _ in 0..60 {
+        let start = std::time::Instant::now();
+        for attempt in 0..240 {
             std::thread::sleep(Duration::from_millis(500));
             let ok = client.get(&health_url).send()
                 .map(|r| r.status().is_success())
                 .unwrap_or(false);
             if ok {
+                let elapsed = start.elapsed().as_secs_f32();
+                log::info!("LlamaEngine ready in {:.1}s (attempt {})", elapsed, attempt);
                 ready = true;
                 break;
             }
@@ -67,7 +70,7 @@ impl LlamaEngine {
         if !ready {
             let _ = process.kill();
             return Err(format!(
-                "llama-server failed to become ready within 30s (port {})", port
+                "llama-server failed to become ready within 120s (port {})", port
             ));
         }
 
