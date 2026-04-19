@@ -18,7 +18,7 @@ interface AudioDevice {
 
 export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPanelProps) {
   const t = translations[uiLocale];
-  const { settings, profiles, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, createProfile, deleteProfile, loading } = useSettings();
+  const { settings, profiles, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, updateProfileFormattingMode, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
   const [capturingShortcutFor, setCapturingShortcutFor] = useState<keyof AppSettings | null>(null);
   const capturingRef = useRef<keyof AppSettings | null>(null);
@@ -507,8 +507,33 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                               />
                            </div>
 
+                           <div className="space-y-3">
+                              <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">{t.formatting_mode_label}</label>
+                              <div className="flex gap-3">
+                                {(['plain', 'markdown'] as const).map(mode => {
+                                  const isActive = (profile.formatting_mode || 'plain') === mode;
+                                  return (
+                                    <button
+                                      key={mode}
+                                      onClick={() => updateProfileFormattingMode(profile.id, mode)}
+                                      className={`flex-1 py-3 px-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                                        isActive
+                                          ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                                          : 'bg-background/50 border border-surface-container-high text-on-surface-variant hover:border-primary/40'
+                                      }`}
+                                    >
+                                      <div>{mode === 'plain' ? t.formatting_mode_plain : t.formatting_mode_markdown}</div>
+                                      <div className={`text-[9px] normal-case tracking-normal mt-0.5 font-normal ${isActive ? 'text-on-primary/70' : 'text-on-surface-variant/60'}`}>
+                                        {mode === 'plain' ? t.formatting_mode_plain_desc : t.formatting_mode_markdown_desc}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                           </div>
+
                            <div className="flex gap-4 pt-2">
-                              <button 
+                              <button
                                 onClick={() => {
                                   updateProfile(profile.id, editName, editPrompt, editIcon);
                                   setEditingProfileId(null);
