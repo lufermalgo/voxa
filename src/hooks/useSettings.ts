@@ -20,6 +20,7 @@ export interface Profile {
   system_prompt: string;
   icon?: string;
   is_default: boolean;
+  formatting_mode: string;
 }
 
 export interface DictionaryEntry {
@@ -148,6 +149,15 @@ export function useSettings() {
     }
   };
 
+  const updateProfileFormattingMode = async (id: number, mode: string) => {
+    try {
+      await invoke("update_profile_formatting_mode", { id, mode });
+      setProfiles(prev => prev.map(p => p.id === id ? { ...p, formatting_mode: mode } : p));
+    } catch (err: any) {
+      setError(err?.toString() || "Error updating formatting mode");
+    }
+  };
+
   const createProfile = async (name: string, prompt: string, icon?: string) => {
     try {
       await invoke("create_profile", { name, prompt, icon });
@@ -178,6 +188,7 @@ export function useSettings() {
     removeWord,
     updateReplacement,
     updateProfile,
+    updateProfileFormattingMode,
     createProfile,
     deleteProfile,
     refresh: fetchSettings
