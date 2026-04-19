@@ -1,0 +1,148 @@
+{
+  "brand": {
+    "name": "Voxa",
+    "tagline": "Voice Intelligence Layer",
+    "description": "Privacy-first dictation for macOS"
+  },
+  "colors": {
+    "primary": "#9D7AFF",
+    "primaryContainer": "#8266FF",
+    "primaryHover": "#7B61F2",
+    "accent": "#9D7AFF",
+    "secondary": "#5078E8",
+    "error": "#BA1A1A",
+    "background": "#FBFBFF",
+    "surface": {
+      "containerLowest": "#FFFFFF",
+      "containerLow": "#F7F7F9",
+      "container": "#F2F2F4",
+      "containerHigh": "#EDEDEF",
+      "containerHighest": "#E8E8EA"
+    },
+    "text": {
+      "onSurface": "#121417",
+      "onSurfaceVariant": "#454749",
+      "onPrimary": "#FFFFFF",
+      "onError": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Manrope, sans-serif",
+      "weight": 700,
+      "letterSpacing": "0.1rem"
+    },
+    "body": {
+      "family": "Inter, sans-serif",
+      "weight": 400
+    },
+    "scale": {
+      "xl": "1.25rem",
+      "lg": "1.125rem",
+      "base": "0.875rem",
+      "sm": "0.75rem",
+      "xs": "0.625rem",
+      "micro": "0.5625rem"
+    }
+  },
+  "radii": {
+    "voxa": "2.5rem",
+    "system": "12px",
+    "xl": "1.25rem",
+    "lg": "1rem",
+    "md": "0.75rem",
+    "sm": "0.5rem",
+    "full": "9999px"
+  },
+  "spacing": {
+    "headerHeight": "48px",
+    "sidebarWidth": "200px",
+    "footerHeight": "32px",
+    "contentPadding": {
+      "x": "2.5rem",
+      "y": "2rem"
+    },
+    "rowMinHeight": "40px",
+    "cardPadding": "1rem"
+  },
+  "components": {
+    "toggle": {
+      "width": "46px",
+      "height": "28px",
+      "knobSize": "20px",
+      "knobPadding": "4px",
+      "activeBackground": "primary",
+      "inactiveBackground": "surface.containerHighest"
+    },
+    "button": {
+      "primary": {
+        "background": "primary",
+        "text": "onPrimary",
+        "radius": "xl",
+        "shadow": true
+      },
+      "secondary": {
+        "background": "surface.container",
+        "text": "text.onSurfaceVariant",
+        "border": "onSurface/[0.10]",
+        "radius": "xl"
+      },
+      "destructive": {
+        "background": "error/10",
+        "text": "error",
+        "border": "error/20",
+        "radius": "xl"
+      }
+    },
+    "tag": {
+      "background": "surface.container",
+      "border": "onSurface/[0.12]",
+      "radius": "full",
+      "padding": "0.75rem 1rem"
+    },
+    "card": {
+      "background": "surface.containerLow",
+      "border": "onSurface/[0.06]",
+      "hoverBorder": "primary/20",
+      "radius": "xl",
+      "padding": "1rem"
+    },
+    "input": {
+      "background": "surface.container",
+      "border": "onSurface/[0.10]",
+      "focusRing": "primary/30",
+      "focusBorder": "primary/40",
+      "radius": "xl"
+    }
+  },
+  "logo": {
+    "dock": {
+      "shape": "squircle",
+      "background": "primary",
+      "icon": "5 vertical white bars (sound wave)",
+      "sizes": {
+        "large": "56x56",
+        "medium": "36x36",
+        "small": "24x24"
+      }
+    },
+    "menubar": {
+      "style": "monochrome template",
+      "bars": "3-5",
+      "size": "16x16 visual, 22x22 canvas"
+    }
+  },
+  "accessibility": {
+    "contrastRatios": {
+      "onSurfaceVsBackground": "17.9:1 (AAA)",
+      "onSurfaceVariantVsBackground": "9.0:1 (AA)",
+      "primaryVsBackground": "3.1:1 (large text only)"
+    },
+    "rules": [
+      "Never use primary (#9D7AFF) for text smaller than 14px bold or 18px regular",
+      "All body text must use onSurface (#121417) or onSurfaceVariant (#454749)",
+      "Minimum touch target: 44x44px on interactive elements",
+      "All toggles must have role='switch' and aria-checked"
+    ]
+  }
+}
