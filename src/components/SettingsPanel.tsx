@@ -407,9 +407,17 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                   {profiles.map(profile => {
                     const isActive = settings.active_profile_id === profile.id.toString();
                     const isEditing = editingProfileId === profile.id;
-                    const promptPreview = profile.system_prompt
-                      ? (profile.system_prompt.length > 80 ? profile.system_prompt.slice(0, 80) + '...' : profile.system_prompt)
-                      : t.exact_transcription;
+                    const promptPreview = (() => {
+                      const descriptions: Record<string, string> = {
+                        'Elegant': 'Formal and polished writing with perfect grammar',
+                        'Informal': 'Casual and direct, like a chat message',
+                        'Code': 'Transforms voice into structured AI prompts',
+                        'Raw': 'Exact transcription without any changes',
+                      };
+                      return descriptions[profile.name] || (profile.system_prompt
+                        ? (profile.system_prompt.length > 60 ? profile.system_prompt.slice(0, 60) + '...' : profile.system_prompt)
+                        : t.exact_transcription);
+                    })();
                     return (
                       <div key={profile.id}>
                         {/* Profile card */}
