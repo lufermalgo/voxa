@@ -96,6 +96,23 @@ fn init_tables(conn: &Connection) -> Result<()> {
     // Migration: add icon column if missing
     let _ = conn.execute("ALTER TABLE transformation_profiles ADD COLUMN icon TEXT", []);
 
+    // Migration: add formatting_mode column (plain by default)
+    let _ = conn.execute("ALTER TABLE transformation_profiles ADD COLUMN formatting_mode TEXT NOT NULL DEFAULT 'plain'", []);
+
+    // Formatting hints table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS formatting_hints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id INTEGER NOT NULL,
+            pattern TEXT NOT NULL,
+            hint TEXT NOT NULL,
+            frequency INTEGER NOT NULL DEFAULT 1,
+            is_promoted INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (profile_id) REFERENCES transformation_profiles(id)
+        )",
+        [],
+    )?;
+
     // Migration: drop unused columns (idempotent — ignore errors if column doesn't exist)
     let _ = conn.execute("ALTER TABLE transcripts DROP COLUMN is_favorite", []);
     let _ = conn.execute("ALTER TABLE custom_dict DROP COLUMN replacement", []);
@@ -207,6 +224,10 @@ Output ONLY the prompt. Nothing before, nothing after.' WHERE id = 3",
         [],
     );
 
+    // Set formatting_mode for built-in profiles (idempotent)
+    let _ = conn.execute("UPDATE transformation_profiles SET formatting_mode = 'plain' WHERE id IN (1, 2, 4)", []);
+    let _ = conn.execute("UPDATE transformation_profiles SET formatting_mode = 'markdown' WHERE id = 3", []);
+
     Ok(())
 }
 
@@ -294,48 +315,38 @@ pub struct Profile {
     pub system_prompt: String,
     pub icon: Option<String>,
     pub is_default: bool,
+    pub formatting_mode: String,
+}
+
+fn map_profile_row(row: &rusqlite::Row) -> rusqlite::Result<Profile> {
+    Ok(Profile {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        system_prompt: row.get(2)?,
+        icon: row.get(3)?,
+        is_default: row.get::<_, i64>(4)? != 0,
+        formatting_mode: row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "plain".to_string()),
+    })
 }
 
 pub fn get_profiles(conn: &Connection) -> Result<Vec<Profile>> {
-    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon, is_default FROM transformation_profiles")?;
-    let profile_iter = stmt.query_map([], |row| {
-        Ok(Profile {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            system_prompt: row.get(2)?,
-            icon: row.get(3)?,
-            is_default: row.get::<_, i64>(4)? != 0,
-        })
-    })?;
-
+    let mut stmt = conn.prepare(
+        "SELECT id, name, system_prompt, icon, is_default, formatting_mode FROM transformation_profiles"
+    )?;
+    let profile_iter = stmt.query_map([], map_profile_row)?;
     let mut profiles = Vec::new();
-    for profile in profile_iter {
-        profiles.push(profile?);
-    }
+    for profile in profile_iter { profiles.push(profile?); }
     Ok(profiles)
 }
 
 pub fn get_active_profile(conn: &Connection) -> Result<Option<Profile>> {
     let settings = get_settings(conn)?;
-    let active_id_str = settings.get("active_profile_id").cloned().unwrap_or_else(|| "1".to_string());
-    let active_id: i64 = active_id_str.parse().unwrap_or(1);
-
-    let mut stmt = conn.prepare("SELECT id, name, system_prompt, icon, is_default FROM transformation_profiles WHERE id = ?1")?;
-    let mut profile_iter = stmt.query_map(params![active_id], |row| {
-        Ok(Profile {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            system_prompt: row.get(2)?,
-            icon: row.get(3)?,
-            is_default: row.get::<_, i64>(4)? != 0,
-        })
-    })?;
-
-    if let Some(profile) = profile_iter.next() {
-        Ok(Some(profile?))
-    } else {
-        Ok(None)
-    }
+    let active_id: i64 = settings.get("active_profile_id").and_then(|s| s.parse().ok()).unwrap_or(1);
+    let mut stmt = conn.prepare(
+        "SELECT id, name, system_prompt, icon, is_default, formatting_mode FROM transformation_profiles WHERE id = ?1"
+    )?;
+    let mut iter = stmt.query_map(params![active_id], map_profile_row)?;
+    if let Some(p) = iter.next() { Ok(Some(p?)) } else { Ok(None) }
 }
 
 pub fn update_profile(conn: &Connection, id: i64, name: &str, prompt: &str, icon: Option<String>) -> Result<()> {
@@ -346,9 +357,17 @@ pub fn update_profile(conn: &Connection, id: i64, name: &str, prompt: &str, icon
     Ok(())
 }
 
+pub fn update_profile_formatting_mode(conn: &Connection, id: i64, mode: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE transformation_profiles SET formatting_mode = ?1 WHERE id = ?2",
+        params![mode, id],
+    )?;
+    Ok(())
+}
+
 pub fn create_profile(conn: &Connection, name: &str, prompt: &str, icon: Option<String>) -> Result<i64> {
     conn.execute(
-        "INSERT INTO transformation_profiles (name, system_prompt, icon, is_default) VALUES (?1, ?2, ?3, 0)",
+        "INSERT INTO transformation_profiles (name, system_prompt, icon, is_default, formatting_mode) VALUES (?1, ?2, ?3, 0, 'plain')",
         params![name, prompt, icon],
     )?;
     Ok(conn.last_insert_rowid())
@@ -434,5 +453,61 @@ pub fn increment_usage_count(conn: &Connection, word: &str) -> Result<()> {
 
 pub fn remove_from_dictionary(conn: &Connection, word: &str) -> Result<()> {
     conn.execute("DELETE FROM custom_dict WHERE word = ?1", params![word])?;
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct FormattingHint {
+    pub id: i64,
+    pub profile_id: i64,
+    pub pattern: String,
+    pub hint: String,
+    pub frequency: i64,
+    pub is_promoted: bool,
+}
+
+pub fn get_active_hints(conn: &Connection, profile_id: i64) -> Result<Vec<FormattingHint>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, profile_id, pattern, hint, frequency, is_promoted FROM formatting_hints
+         WHERE profile_id = ?1 AND (is_promoted = 1 OR id IN (
+             SELECT id FROM formatting_hints WHERE profile_id = ?1 AND is_promoted = 0
+             ORDER BY id DESC LIMIT 3
+         ))
+         ORDER BY is_promoted DESC, frequency DESC"
+    )?;
+    let iter = stmt.query_map(params![profile_id], |row| {
+        Ok(FormattingHint {
+            id: row.get(0)?,
+            profile_id: row.get(1)?,
+            pattern: row.get(2)?,
+            hint: row.get(3)?,
+            frequency: row.get(4)?,
+            is_promoted: row.get::<_, i64>(5)? != 0,
+        })
+    })?;
+    let mut hints = Vec::new();
+    for h in iter { hints.push(h?); }
+    Ok(hints)
+}
+
+pub fn upsert_formatting_hint(conn: &Connection, profile_id: i64, pattern: &str, hint: &str) -> Result<()> {
+    let existing: Option<(i64, i64)> = conn.query_row(
+        "SELECT id, frequency FROM formatting_hints WHERE profile_id = ?1 AND pattern = ?2",
+        params![profile_id, pattern],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).ok();
+    if let Some((id, freq)) = existing {
+        let new_freq = freq + 1;
+        let promoted = if new_freq >= 5 { 1 } else { 0 };
+        conn.execute(
+            "UPDATE formatting_hints SET frequency = ?1, is_promoted = ?2 WHERE id = ?3",
+            params![new_freq, promoted, id],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO formatting_hints (profile_id, pattern, hint, frequency, is_promoted) VALUES (?1, ?2, ?3, 1, 0)",
+            params![profile_id, pattern, hint],
+        )?;
+    }
     Ok(())
 }
