@@ -7,7 +7,7 @@ use rusqlite::params;
 use tauri::Manager;
 use crate::audio::{self, AudioEngine};
 use crate::db::{self, DbState, SettingsCache, Transcript};
-use crate::pipeline::{DictationEvent, DictationSender, ManualProfileOverride, RecordingState, FrontmostApp};
+use crate::pipeline::{DictationEvent, DictationSender, EngineState, ManualProfileOverride, RecordingState, FrontmostApp};
 
 // ---------------------------------------------------------------------------
 // Transcripts
@@ -176,6 +176,43 @@ pub fn set_manual_profile_override(
 ) -> Result<(), String> {
     *app.state::<ManualProfileOverride>().0.lock().unwrap() = profile_name;
     Ok(())
+}
+
+#[tauri::command]
+pub fn update_profile_formatting_mode(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    id: i64,
+    mode: String,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::update_profile_formatting_mode(&conn, id, &mode).map_err(|e| e.to_string())?;
+    let _ = app.emit("profiles-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn submit_correction(
+    db_state: State<'_, DbState>,
+    engine_state: State<'_, EngineState>,
+    profile_id: i64,
+    original_text: String,
+    corrected_text: String,
+) -> Result<(), String> {
+    let hint = {
+        let mut guard = engine_state.llama.lock().map_err(|e| e.to_string())?;
+        if let Some(ref mut llama) = *guard {
+            let system = "Extract ONE formatting rule from the difference between Original and Corrected text. Return a single imperative instruction, max 15 words. Return ONLY the instruction.";
+            let input = format!("Original: {}\nCorrected: {}", original_text, corrected_text);
+            llama.refine_text(&input, system, "en", "", "").unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+    if hint.trim().is_empty() { return Ok(()); }
+    let pattern: String = original_text.chars().take(60).collect();
+    let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+    db::upsert_formatting_hint(&conn, profile_id, &pattern, hint.trim()).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
