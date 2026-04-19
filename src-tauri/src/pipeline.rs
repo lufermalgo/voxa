@@ -520,6 +520,15 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     let refined_text = {
                         let mut llama_lock = engine_state.llama.lock().unwrap();
 
+                        // If the server process died externally (e.g. killall), detect it and
+                        // clear the stale handle so the None branch below restarts it cleanly.
+                        if let Some(ref engine) = *llama_lock {
+                            if !engine.is_alive() {
+                                log::warn!("LlamaEngine: server died externally, will restart.");
+                                *llama_lock = None;
+                            }
+                        }
+
                         if llama_lock.is_none() {
                             let model_path  = model_manager.get_llama_path();
                             let server_path = model_manager.get_effective_llama_server();
