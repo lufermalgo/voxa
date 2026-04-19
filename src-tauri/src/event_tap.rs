@@ -514,13 +514,18 @@ pub fn get_favicon_from_browser_cache(domain: &str, bundle_id: &str) -> Option<S
         return None;
     };
 
-    if !std::path::Path::new(&db_str).exists() { return None; }
+    let db_path = std::path::Path::new(&db_str);
+    if !db_path.exists() { return None; }
+
+    // Chrome holds an exclusive lock on the Favicons DB while running.
+    // Copy it to a temp file first so we can open it without contention.
+    let tmp_path = std::env::temp_dir().join("voxa_favicons_tmp.db");
+    if std::fs::copy(db_path, &tmp_path).is_err() { return None; }
 
     let conn = rusqlite::Connection::open_with_flags(
-        &db_str,
+        &tmp_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ).ok()?;
-    let _ = conn.busy_timeout(std::time::Duration::from_millis(100));
 
     let pattern = format!("%{}%", domain);
     let data: Option<Vec<u8>> = conn.query_row(

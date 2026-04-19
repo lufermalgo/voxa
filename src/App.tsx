@@ -11,7 +11,7 @@ import { Locale, translations } from "./i18n";
 import "./App.css";
 
 function App() {
-  const { status, rawText, refinedText, appInfo, activeProfile } = useTranscription();
+  const { status, rawText, refinedText, appInfo } = useTranscription();
   const profiles = useProfiles();
   const [windowLabel, setWindowLabel] = useState<string>(() => getCurrentWindow().label);
   const [activeTab, setActiveTab] = useState<string>("general");
@@ -118,7 +118,6 @@ function App() {
           appInfo={appInfo}
           refinedText={refinedText}
           rawText={rawText}
-          activeProfile={activeProfile}
           profiles={profiles}
         />
       </div>

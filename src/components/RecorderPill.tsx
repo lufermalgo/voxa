@@ -3,9 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Locale, translations } from "../i18n";
 import { useAudioLevel } from "../hooks/useAudioLevel";
 import { useRecordingDuration } from "../hooks/useRecordingDuration";
-import { AppInfo, ProfileDetectedEvent } from "../hooks/useTranscription";
+import { AppInfo } from "../hooks/useTranscription";
 import type { Profile } from "../hooks/useProfiles";
-import { ProfilePill } from "./ProfilePill";
 import { ProfilePicker } from "./ProfilePicker";
 
 interface RecorderPillProps {
@@ -13,11 +12,12 @@ interface RecorderPillProps {
   label?: string;
   uiLocale: Locale;
   appInfo?: AppInfo | null;
-  activeProfile?: ProfileDetectedEvent | null;
   profiles?: Profile[];
+  refinedText?: string;
+  rawText?: string;
 }
 
-export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, activeProfile, profiles = [] }: RecorderPillProps) => {
+export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, profiles = [], refinedText }: RecorderPillProps) => {
   const isIdle       = status === "idle";
   const isRecording  = status === "recording";
   const isLoading    = status === "loading" || status === "loading_whisper" || status === "loading_llama";
@@ -32,6 +32,10 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, ac
 
   const prevIsWarningRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showCorrectionCard, setShowCorrectionCard] = useState(false);
+  const [correctedText, setCorrectedText] = useState("");
+  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+  const correctionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isRecording) {
@@ -45,6 +49,33 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, ac
     prevIsWarningRef.current = isWarning;
     invoke("set_pill_warning_mode", { expand: isWarning }).catch(() => {});
   }, [isWarning, isRecording]);
+
+  useEffect(() => {
+    if (isDone && refinedText) {
+      setShowCorrectionCard(false);
+      setCorrectedText("");
+      correctionTimerRef.current = setTimeout(() => setShowCorrectionCard(false), 30000);
+    } else if (!isDone) {
+      setShowCorrectionCard(false);
+      if (correctionTimerRef.current) clearTimeout(correctionTimerRef.current);
+    }
+    return () => { if (correctionTimerRef.current) clearTimeout(correctionTimerRef.current); };
+  }, [isDone, refinedText]);
+
+  const handleSubmitCorrection = async () => {
+    if (!correctedText.trim() || !refinedText) return;
+    setCorrectionSubmitting(true);
+    try {
+      const settings = await invoke<Record<string, string>>("get_settings");
+      const profileId = parseInt(settings.active_profile_id ?? "1", 10);
+      await invoke("submit_correction", { profileId, originalText: refinedText, correctedText: correctedText.trim() });
+    } catch (e) {
+      console.error("Correction submit failed:", e);
+    } finally {
+      setCorrectionSubmitting(false);
+      setShowCorrectionCard(false);
+    }
+  };
 
   const handleStop   = () => invoke("stop_and_transcribe");
   const handleCancel = () => invoke("cancel_recording");
@@ -103,7 +134,7 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, ac
         <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 z-50">
           <ProfilePicker
             profiles={profiles}
-            currentProfileName={activeProfile?.name ?? ""}
+            currentProfileName={""}
             onSelect={async (name) => {
               try {
                 await invoke("set_manual_profile_override", { profileName: name });
@@ -167,14 +198,6 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, ac
               ))}
             </div>
 
-            {activeProfile && (
-              <ProfilePill
-                profileName={activeProfile.name}
-                isAuto={activeProfile.is_auto}
-                onClick={() => setPickerOpen(true)}
-              />
-            )}
-
             {appInfo && (
               <div title={appInfo.name} className="flex-shrink-0 z-10">
                 {appInfo.icon ? (
@@ -218,9 +241,54 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, ac
             <span className="text-[12px] font-bold text-white tracking-[0.15em] uppercase font-manrope z-10">
               {t.sent}
             </span>
+            {refinedText && (
+              <button
+                onClick={() => setShowCorrectionCard(v => !v)}
+                className="flex-shrink-0 flex items-center justify-center text-white/40 hover:text-white/80 transition-colors cursor-pointer z-10 ml-1"
+                title="Corrección"
+              >
+                <span className="material-symbols-outlined !text-[18px]">edit</span>
+              </button>
+            )}
           </>
         )}
       </div>
+
+      {/* CORRECTION CARD — floats above pill */}
+      {showCorrectionCard && isDone && (
+        <div className="absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 w-[320px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="relative rounded-[20px] overflow-hidden bg-[#0A0A0A]/90 backdrop-blur-[40px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+            <div className="h-[2px] w-full bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-[11px] font-black text-white/60 uppercase tracking-widest">Corrección</p>
+              <p className="text-[11px] text-white/40 leading-snug">Pega el texto corregido para que Voxa aprenda tu preferencia de formato.</p>
+              <textarea
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-[12px] text-white/80 resize-none focus:outline-none focus:border-primary/40 leading-relaxed"
+                rows={4}
+                placeholder="Texto corregido..."
+                value={correctedText}
+                onChange={e => setCorrectedText(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSubmitCorrection}
+                  disabled={correctionSubmitting || !correctedText.trim()}
+                  className="flex-1 bg-primary text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {correctionSubmitting ? "..." : "Enviar"}
+                </button>
+                <button
+                  onClick={() => setShowCorrectionCard(false)}
+                  className="px-4 bg-white/5 text-white/40 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
