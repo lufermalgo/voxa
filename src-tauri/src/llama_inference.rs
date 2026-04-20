@@ -84,6 +84,19 @@ impl LlamaEngine {
         Ok(Self { _process: process, port, client })
     }
 
+    /// Returns true if the llama-server process is still running and healthy.
+    pub fn is_alive(&self) -> bool {
+        let health_url = format!("http://127.0.0.1:{}/health", self.port);
+        let quick_client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok();
+        quick_client
+            .and_then(|c| c.get(&health_url).send().ok())
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+    }
+
     /// Sends the transcription + profile system prompt to the running llama-server
     /// and returns the transformed text.
     ///
