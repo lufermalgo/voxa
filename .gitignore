@@ -27,6 +27,7 @@ amical/
 .cursor/
 .gemini/
 .agent/
+.kiro/
 
 # Tauri
 src-tauri/target
