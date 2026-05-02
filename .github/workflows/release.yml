@@ -37,14 +37,23 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: pnpm tauri build --target aarch64-apple-darwin
+
+      - name: Create release and upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Voxa ${{ github.ref_name }}'
-          releaseBody: |
-            See the [full changelog](https://github.com/${{ github.repository }}/compare/v1.0.2...${{ github.ref_name }}).
-          releaseDraft: false
-          prerelease: false
-          args: --target aarch64-apple-darwin
+        run: |
+          # Find the .dmg file
+          DMG=$(find src-tauri/target -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG" ]; then
+            echo "No .dmg file found!"
+            find src-tauri/target -name "*.dmg" -o -name "*.app" | head -20
+            exit 1
+          fi
+          echo "Found DMG: $DMG"
+
+          # Create release and upload in one step
+          gh release create "${{ github.ref_name }}" \
+            --title "Voxa ${{ github.ref_name }}" \
+            --notes "See the [full changelog](https://github.com/${{ github.repository }}/compare/v1.0.2...${{ github.ref_name }})." \
+            "$DMG"
