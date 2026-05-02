@@ -28,6 +28,8 @@ amical/
 .gemini/
 .agent/
 .kiro/
+.aind/
+.vscode/
 
 # Tauri
 src-tauri/target
