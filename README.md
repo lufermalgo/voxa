@@ -72,28 +72,56 @@ When you correct a transcript, Voxa automatically extracts the new words and add
 
 ## 📦 Download
 
-**[→ Download Voxa v1.0.2 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.0.2)**
+**[→ Download Voxa v1.2.1 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.2.1)**
 
-> Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4). Intel support coming soon.
+> Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4).
 
-### First-time setup
+### Installation
 
-1. Download and open the `.dmg` file.
-2. Drag **Voxa** to your Applications folder.
-3. On first launch, macOS will ask for **microphone** and **accessibility** permissions — both are required.
-4. Voxa will automatically download the AI models (~1 GB) on first run.
-5. Set your activation shortcut in **Settings** and start dictating.
+1. Download `Voxa_1.2.0_aarch64.dmg` from the link above.
+2. Open the `.dmg` and drag **Voxa** to your **Applications** folder.
+3. **Important — before opening Voxa**, run this command in Terminal to remove the macOS quarantine flag:
+   ```bash
+   xattr -cr /Applications/Voxa.app
+   ```
+4. Open Voxa. On first launch, macOS will ask for **Accessibility** permission — click **Open System Settings** and enable the toggle for Voxa.
+5. Voxa will automatically download the AI models (~1 GB) on first run.
+6. Use the default shortcuts to start dictating: **Alt+Space** (push-to-talk) or **F5** (hands-free toggle).
 
-> **Note:** Voxa runs entirely on-device. No data ever leaves your machine.
+### ⚠️ Why the extra step?
+
+Voxa is **not code-signed or notarized** with Apple because the project doesn't have an Apple Developer account ($99/year). This means:
+
+- macOS Gatekeeper will show **"Voxa.app is damaged and can't be opened"** — this is a false positive. The app is not damaged.
+- The `xattr -cr` command removes the quarantine attribute that macOS adds to files downloaded from the internet.
+- You also need to manually grant **Accessibility** permission in System Settings → Privacy & Security → Accessibility.
+
+**Voxa is 100% open source.** You can audit every line of code in this repository, and you can build it yourself from source (see [Development](#-development) below). No data ever leaves your machine.
+
+> If you're a developer with an Apple Developer account and want to help sign and notarize Voxa, see [docs/code-signing.md](docs/code-signing.md).
+
+### macOS Permissions
+
+Voxa requires these permissions to function:
+
+| Permission | Why | How to grant |
+|-----------|-----|-------------|
+| **Accessibility** | Capture global keyboard shortcuts and inject text into other apps via `Cmd+V` simulation | System Settings → Privacy & Security → Accessibility → enable Voxa |
+| **Microphone** | Record audio for voice dictation | Granted automatically on first recording attempt |
+
+If shortcuts stop working after an update, remove Voxa from the Accessibility list and re-add it — macOS invalidates the permission when the binary hash changes.
+
+> **Note:** Voxa runs entirely on-device. No API keys, no cloud, no subscriptions. Your voice never leaves your machine.
 
 ## 🚀 Development
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [Rust](https://www.rust-lang.org/)
-- [Tauri CLI](https://tauri.app/v1/guides/getting-started/prerequisites)
-- `brew install llama.cpp` (for LLM inference)
+- [Node.js](https://nodejs.org/) (v22+)
+- [pnpm](https://pnpm.io/) (v9+)
+- [Rust](https://www.rust-lang.org/) (stable)
+- [Tauri CLI](https://tauri.app/start/) (`pnpm add -g @tauri-apps/cli`)
+- macOS with Xcode Command Line Tools (`xcode-select --install`)
 
 ### Running locally
 
@@ -105,13 +133,21 @@ When you correct a transcript, Voxa automatically extracts the new words and add
 
 2. Install dependencies:
    ```bash
-   npm install
+   pnpm install
    ```
 
 3. Run in development:
    ```bash
-   npm run tauri dev
+   pnpm tauri dev
    ```
+
+4. Build a release `.dmg`:
+   ```bash
+   pnpm tauri build --target aarch64-apple-darwin
+   ```
+   The `.dmg` will be in `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
+
+> **Note:** When running from `pnpm tauri dev`, shortcuts work because the process inherits Terminal's Accessibility permission. For the built `.app`, you need to grant Accessibility manually (see [Installation](#installation)).
 
 ## 🏗 Architecture
 
