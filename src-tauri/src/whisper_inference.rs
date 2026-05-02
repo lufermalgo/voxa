@@ -37,8 +37,18 @@ fn strip_hallucinations(text: &str) -> String {
 
 pub struct WhisperEngine {
     context: WhisperContext,
+    state: whisper_rs::WhisperState,
     hallucination_set: HashSet<String>,
+    /// Number of transcriptions since last state reset.
+    /// Metal command buffers can leak ~30MB per inference; resetting the state
+    /// periodically reclaims that memory without the full ~2-5s model reload.
+    uses_since_reset: u32,
 }
+
+/// Maximum number of transcriptions before we recreate the WhisperState.
+/// This reclaims Metal command buffer memory (~30MB per inference) while
+/// keeping the context (model weights) in GPU memory.
+const MAX_USES_BEFORE_RESET: u32 = 20;
 
 impl WhisperEngine {
     pub fn new(model_path: &Path) -> Result<Self, String> {
@@ -54,14 +64,38 @@ impl WhisperEngine {
         }
         let context = WhisperContext::new_with_params(path_str, wparams)
             .map_err(|e| format!("Failed to create whisper context: {}", e))?;
-            
+
+        // Create the state once and keep it alive for the lifetime of the engine.
+        // This avoids re-initializing the Metal GPU backend on every transcription
+        // (~2-5s overhead per call).
+        let state = context.create_state().map_err(|e| {
+            format!("Failed to create whisper state: {}", e)
+        })?;
+
+        log::info!("WhisperEngine: context + state created (Metal backend initialized once)");
+
         Ok(Self {
             context,
+            state,
             hallucination_set: build_hallucination_set(),
+            uses_since_reset: 0,
         })
     }
 
-    pub fn transcribe(&self, audio_data: &[f32], language: &str, initial_prompt: &str) -> Result<String, String> {
+    /// Recreate the WhisperState to reclaim Metal command buffer memory.
+    /// The WhisperContext (model weights) stays in GPU memory — only the
+    /// inference state is reset. This is much faster than a full reload
+    /// (~200ms vs ~2-5s) but still frees accumulated Metal buffers.
+    pub fn reset_state(&mut self) -> Result<(), String> {
+        self.state = self.context.create_state().map_err(|e| {
+            format!("Failed to recreate whisper state: {}", e)
+        })?;
+        self.uses_since_reset = 0;
+        log::info!("WhisperEngine: state reset (Metal buffers reclaimed)");
+        Ok(())
+    }
+
+    pub fn transcribe(&mut self, audio_data: &[f32], language: &str, initial_prompt: &str) -> Result<String, String> {
         log::info!("WHISPER: Starting transcription with {} samples, language: {}, prompt: \"{}\"", audio_data.len(), language, initial_prompt);
         
         // Greedy (best_of=1) is 3-5x faster than BeamSearch on Metal and gives equivalent
@@ -83,24 +117,18 @@ impl WhisperEngine {
             params.set_initial_prompt(initial_prompt);
         }
 
-        log::debug!("WHISPER: Creating state...");
-        let mut state = self.context.create_state().map_err(|e| {
-            log::error!("WHISPER: Failed to create state: {}", e);
-            e.to_string()
-        })?;
-
-        log::debug!("WHISPER: Running inference (full)...");
-        state.full(params, audio_data).map_err(|e| {
+        log::debug!("WHISPER: Running inference (full) with persistent state...");
+        self.state.full(params, audio_data).map_err(|e: whisper_rs::WhisperError| {
             log::error!("WHISPER: Inference failed: {}", e);
             e.to_string()
         })?;
 
-        let num_segments = state.full_n_segments().map_err(|e| e.to_string())?;
+        let num_segments = self.state.full_n_segments().map_err(|e: whisper_rs::WhisperError| e.to_string())?;
         log::debug!("WHISPER: Finished inference. Segments found: {}", num_segments);
 
         let mut result = String::new();
         for i in 0..num_segments {
-            let segment = state.full_get_segment_text(i).map_err(|e| e.to_string())?;
+            let segment = self.state.full_get_segment_text(i).map_err(|e: whisper_rs::WhisperError| e.to_string())?;
             let cleaned_segment = strip_hallucinations(&segment);
             if !is_hallucination(&cleaned_segment, &self.hallucination_set) {
                 result.push_str(&cleaned_segment);
@@ -116,6 +144,17 @@ impl WhisperEngine {
         } else {
             after_regex
         };
+
+        // Periodically reset state to reclaim Metal command buffer memory.
+        // See: https://github.com/lufermalgo/voxa/issues/68#issuecomment-community
+        self.uses_since_reset += 1;
+        if self.uses_since_reset >= MAX_USES_BEFORE_RESET {
+            log::info!("WhisperEngine: {} uses reached, resetting state to reclaim Metal memory", self.uses_since_reset);
+            if let Err(e) = self.reset_state() {
+                log::error!("WhisperEngine: state reset failed: {}", e);
+            }
+        }
+
         Ok(final_text)
     }
 }

@@ -433,7 +433,7 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 }
                             }
                         }
-                        let whisper = whisper_lock.as_ref().unwrap();
+                        let whisper = whisper_lock.as_mut().unwrap();
                         let initial_prompt = {
                             let dict = {
                                 let conn = db_state.conn.lock().unwrap();

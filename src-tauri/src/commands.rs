@@ -94,12 +94,28 @@ pub fn update_setting(
     app: tauri::AppHandle,
     state: tauri::State<DbState>,
     cache: tauri::State<SettingsCache>,
+    engine_state: tauri::State<crate::pipeline::EngineState>,
     key: String,
     value: String,
 ) -> Result<(), String> {
     let conn = state.conn.lock().unwrap();
     db::update_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
     cache.invalidate(&key, &value);
+
+    // When the user changes microphone, reset the Whisper state so the next
+    // transcription starts with a fresh Metal context. This prevents stale
+    // sample-rate assumptions from producing garbage output.
+    if key == "mic_id" {
+        if let Ok(mut whisper_lock) = engine_state.whisper.lock() {
+            if let Some(ref mut whisper) = *whisper_lock {
+                log::info!("Mic changed to '{}', resetting Whisper state", value);
+                if let Err(e) = whisper.reset_state() {
+                    log::error!("Whisper state reset on mic change failed: {}", e);
+                }
+            }
+        }
+    }
+
     let _ = app.emit("settings-updated", ());
     Ok(())
 }
