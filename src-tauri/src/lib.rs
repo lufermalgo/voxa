@@ -144,6 +144,30 @@ pub fn run() {
                 }
             });
 
+            // Pre-warm WhisperEngine in background — loads model + initializes Metal
+            // GPU backend so the first dictation doesn't pay the ~5s init cost.
+            let app_whisper_warmup = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let model_manager = app_whisper_warmup.state::<models::ModelManager>();
+                let engine_state  = app_whisper_warmup.state::<EngineState>();
+                let model_path    = model_manager.get_whisper_path();
+                if !model_path.exists() { return; }
+                { let lock = engine_state.whisper.lock().unwrap(); if lock.is_some() { return; } }
+                log::info!("Pre-loading WhisperEngine from {:?}", model_path);
+                let t_load = std::time::Instant::now();
+                match whisper_inference::WhisperEngine::new(&model_path) {
+                    Ok(e) => {
+                        let mut lock = engine_state.whisper.lock().unwrap();
+                        if lock.is_none() { *lock = Some(e); }
+                        let size_mb = std::fs::metadata(&model_path)
+                            .map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                        log::info!("WhisperEngine ready — {:.0}MB  {:.2}s", size_mb, t_load.elapsed().as_secs_f64());
+                    }
+                    Err(e) => log::error!("WhisperEngine warmup failed: {}", e),
+                }
+            });
+
             pipeline::start_pipeline(app.handle().clone(), rx);
 
             // Request Accessibility permission with a prompt if not already trusted.
