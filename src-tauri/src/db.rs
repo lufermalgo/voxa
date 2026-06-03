@@ -134,7 +134,8 @@ fn init_tables(conn: &Connection) -> Result<()> {
         ('active_profile_id', '1'),
         ('auto_detect_profile', 'true'),
         ('bypass_llm', 'false'),
-        ('max_recording_seconds', '60')",
+        ('max_recording_seconds', '60'),
+        ('launch_at_login', 'false')",
         [],
     )?;
 

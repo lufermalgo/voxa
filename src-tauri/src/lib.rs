@@ -39,6 +39,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "settings" {
@@ -94,8 +95,30 @@ pub fn run() {
 
             let conn = db::init(app.handle())?;
             let initial_settings = db::get_settings(&conn).unwrap_or_default();
-            app.manage(SettingsCache::new(initial_settings));
+            app.manage(SettingsCache::new(initial_settings.clone()));
             app.manage(DbState { conn: Arc::new(Mutex::new(conn)) });
+
+            // Reconcile the OS login item with the persisted `launch_at_login`
+            // setting, in case it drifted (e.g. user removed it from System
+            // Settings, or the app was reinstalled).
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let want_enabled = initial_settings
+                    .get("launch_at_login")
+                    .map(|v| v == "true")
+                    .unwrap_or(false);
+                let manager = app.autolaunch();
+                let is_enabled = manager.is_enabled().unwrap_or(false);
+                if want_enabled && !is_enabled {
+                    if let Err(e) = manager.enable() {
+                        log::error!("Failed to enable launch at login on startup: {}", e);
+                    }
+                } else if !want_enabled && is_enabled {
+                    if let Err(e) = manager.disable() {
+                        log::error!("Failed to disable launch at login on startup: {}", e);
+                    }
+                }
+            }
 
             tray::build_tray(app)?;
 
@@ -207,6 +230,7 @@ pub fn run() {
             commands::clear_transcripts,
             commands::get_settings,
             commands::update_setting,
+            commands::set_launch_at_login,
             commands::get_audio_devices,
             commands::cancel_recording,
             commands::stop_and_transcribe,
