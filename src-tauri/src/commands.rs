@@ -120,9 +120,34 @@ pub fn update_setting(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Audio devices
-// ---------------------------------------------------------------------------
+/// Enables or disables launching Voxa automatically at macOS login.
+/// Registers/unregisters the OS login item via the autostart plugin and
+/// persists the `launch_at_login` setting so the state survives restarts.
+#[tauri::command]
+pub fn set_launch_at_login(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    cache: tauri::State<SettingsCache>,
+    enabled: bool,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())?;
+    } else {
+        manager.disable().map_err(|e| e.to_string())?;
+    }
+
+    let value = if enabled { "true" } else { "false" };
+    {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        db::update_setting(&conn, "launch_at_login", value).map_err(|e| e.to_string())?;
+    }
+    cache.invalidate("launch_at_login", value);
+
+    let _ = app.emit("settings-updated", ());
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn get_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {

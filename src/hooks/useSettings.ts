@@ -14,6 +14,7 @@ export interface AppSettings {
   auto_detect_profile: string;
   bypass_llm: string;
   max_recording_seconds: string;
+  launch_at_login: string;
 }
 
 export interface Profile {
@@ -109,6 +110,19 @@ export function useSettings() {
     }
   };
 
+  // Launch at login needs a dedicated command because it also registers/
+  // unregisters the OS login item, not just the persisted setting.
+  const setLaunchAtLogin = async (enabled: boolean) => {
+    try {
+      await invoke("set_launch_at_login", { enabled });
+      setSettings((prev) => (prev ? { ...prev, launch_at_login: enabled ? "true" : "false" } : null));
+    } catch (err: any) {
+      console.error("Failed to set launch at login:", err);
+      setError(err?.toString() || "Error updating launch at login");
+      await fetchSettings();
+    }
+  };
+
   const addWord = async (word: string) => {
     try {
       await invoke("add_to_dictionary", { word });
@@ -186,6 +200,7 @@ export function useSettings() {
     loading,
     error,
     updateSetting,
+    setLaunchAtLogin,
     addWord,
     removeWord,
     updateReplacement,

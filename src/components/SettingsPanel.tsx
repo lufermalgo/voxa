@@ -18,7 +18,7 @@ interface AudioDevice {
 
 export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPanelProps) {
   const t = translations[uiLocale];
-  const { settings, profiles, dictionaryEntries, updateSetting, addWord, removeWord, updateReplacement, updateProfile, updateProfileFormattingMode, createProfile, deleteProfile, loading } = useSettings();
+  const { settings, profiles, dictionaryEntries, updateSetting, setLaunchAtLogin, addWord, removeWord, updateReplacement, updateProfile, updateProfileFormattingMode, createProfile, deleteProfile, loading } = useSettings();
   const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
   const [capturingShortcutFor, setCapturingShortcutFor] = useState<keyof AppSettings | null>(null);
   const capturingRef = useRef<keyof AppSettings | null>(null);
@@ -675,6 +675,26 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                   >
                     <span className={`absolute top-[4px] left-[4px] w-[20px] h-[20px] rounded-full bg-white shadow transition-transform duration-200 ${
                       settings.bypass_llm === "true" ? "translate-x-[18px]" : "translate-x-0"
+                    }`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between py-3 min-h-[48px] border-b border-on-surface/[0.08]">
+                  <div className="flex-1 mr-4">
+                    <span className="text-sm font-medium text-on-surface">{t.launch_at_login}</span>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">{t.launch_at_login_hint}</p>
+                  </div>
+                  <button
+                    onClick={() => { setLaunchAtLogin(settings.launch_at_login !== "true"); }}
+                    className={`relative w-[46px] h-[28px] rounded-full transition-all duration-200 flex-shrink-0 ${
+                      settings.launch_at_login === "true"
+                        ? "bg-primary"
+                        : "bg-surface-container-highest border border-on-surface/[0.15]"
+                    }`}
+                    role="switch"
+                    aria-checked={settings.launch_at_login === "true"}
+                  >
+                    <span className={`absolute top-[4px] left-[4px] w-[20px] h-[20px] rounded-full bg-white shadow transition-transform duration-200 ${
+                      settings.launch_at_login === "true" ? "translate-x-[18px]" : "translate-x-0"
                     }`} />
                   </button>
                 </div>
