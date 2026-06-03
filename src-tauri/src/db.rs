@@ -133,7 +133,8 @@ fn init_tables(conn: &Connection) -> Result<()> {
         ('shortcut_cancel', 'Escape'),
         ('active_profile_id', '1'),
         ('auto_detect_profile', 'true'),
-        ('bypass_llm', 'false')",
+        ('bypass_llm', 'false'),
+        ('max_recording_seconds', '60')",
         [],
     )?;
 
