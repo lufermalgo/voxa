@@ -34,6 +34,8 @@ Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first 
 - **VAD-Reactive Animation**: The recording pill responds in real time to your microphone level — silence dampens, speech drives the wave.
 - **Focus Preservation**: Returns focus to the exact app you were typing in after injection, including Electron and JVM targets (VS Code, IntelliJ, Cursor).
 - **Ultra-Compact Pill**: A floating Obsidian Glass interface that stays 15px from your Dock — always visible, never in the way.
+- **Configurable Recording Limit**: Set how long a single dictation can run before it auto-stops (30s–600s) from Settings → General. Raise it for long-form dictation like code prompts; lower it to keep takes short.
+- **Launch at Login**: Optionally start Voxa automatically when you log in to macOS. Toggle it in Settings → General → Behavior.
 
 ### 🧠 Transformation Profiles
 
@@ -72,13 +74,13 @@ When you correct a transcript, Voxa automatically extracts the new words and add
 
 ## 📦 Download
 
-**[→ Download Voxa v1.2.1 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.2.1)**
+**[→ Download Voxa v1.5.0 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.5.0)**
 
 > Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4).
 
 ### Installation
 
-1. Download `Voxa_1.2.0_aarch64.dmg` from the link above.
+1. Download `Voxa_1.5.0_aarch64.dmg` from the link above.
 2. Open the `.dmg` and drag **Voxa** to your **Applications** folder.
 3. **Important — before opening Voxa**, run this command in Terminal to remove the macOS quarantine flag:
    ```bash
@@ -172,6 +174,7 @@ Key design decisions:
 For deep dives into specific technical implementations, see:
 - [macOS Native Event Tap & Shortcut Architecture](docs/architecture/shortcuts-native-tap.md)
 - [VAD-Reactive Animation Architecture](docs/architecture/vad-animation.md)
+- [Long-Dictation Strategy for the Code Profile](docs/architecture/long-dictations-code-profile.md)
 
 ---
 
