@@ -678,6 +678,46 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     }`} />
                   </button>
                 </div>
+                <div className="flex items-center justify-between py-3 min-h-[48px] border-b border-on-surface/[0.08]">
+                  <div className="flex-1 mr-4">
+                    <span className="text-sm font-medium text-on-surface">{t.max_recording_time}</span>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">{t.max_recording_time_hint}</p>
+                  </div>
+                  {(() => {
+                    const MIN_SECONDS = 30;
+                    const MAX_SECONDS = 600;
+                    const STEP = 30;
+                    const current = (() => {
+                      const parsed = parseInt(settings.max_recording_seconds ?? "60", 10);
+                      return Number.isNaN(parsed) ? 60 : parsed;
+                    })();
+                    const setSeconds = (value: number) => {
+                      const clamped = Math.max(MIN_SECONDS, Math.min(MAX_SECONDS, value));
+                      updateSetting("max_recording_seconds" as keyof AppSettings, clamped.toString());
+                    };
+                    return (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => setSeconds(current - STEP)}
+                          disabled={current <= MIN_SECONDS}
+                          className="w-8 h-8 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center border border-on-surface/[0.12] hover:bg-surface-container-highest disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                          aria-label="decrease"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">remove</span>
+                        </button>
+                        <span className="min-w-[58px] text-center text-sm font-bold text-on-surface tabular-nums">{current}{t.seconds_unit}</span>
+                        <button
+                          onClick={() => setSeconds(current + STEP)}
+                          disabled={current >= MAX_SECONDS}
+                          className="w-8 h-8 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center border border-on-surface/[0.12] hover:bg-surface-container-highest disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                          aria-label="increase"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">add</span>
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <div className="flex items-center justify-between py-2.5 min-h-[40px]">
                   <span className="text-sm text-on-surface">{t.transcription_input_lang}</span>
                   <div className="flex gap-1.5">

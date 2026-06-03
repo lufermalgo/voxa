@@ -15,9 +15,10 @@ interface RecorderPillProps {
   profiles?: Profile[];
   refinedText?: string;
   rawText?: string;
+  maxRecordingSeconds?: number;
 }
 
-export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, profiles = [], refinedText }: RecorderPillProps) => {
+export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, profiles = [], refinedText, maxRecordingSeconds }: RecorderPillProps) => {
   const isIdle       = status === "idle";
   const isRecording  = status === "recording";
   const isLoading    = status === "loading" || status === "loading_whisper" || status === "loading_llama";
@@ -28,7 +29,7 @@ export const RecorderPill = ({ status, label: customLabel, uiLocale, appInfo, pr
   const t = translations[uiLocale];
 
   const barHeights = useAudioLevel(isRecording);
-  const { progress, isWarning, isNearEnd, timeRemaining } = useRecordingDuration(isRecording);
+  const { progress, isWarning, isNearEnd, timeRemaining } = useRecordingDuration(isRecording, maxRecordingSeconds);
 
   const prevIsWarningRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
