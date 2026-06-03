@@ -658,6 +658,26 @@ export function SettingsPanel({ initialTab = "general", uiLocale }: SettingsPane
                     }`} />
                   </button>
                 </div>
+                <div className="flex items-center justify-between py-3 min-h-[48px] border-b border-on-surface/[0.08]">
+                  <div className="flex-1 mr-4">
+                    <span className="text-sm font-medium text-on-surface">{t.bypass_llm}</span>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">{t.bypass_llm_hint}</p>
+                  </div>
+                  <button
+                    onClick={() => { const next = settings.bypass_llm === "true" ? "false" : "true"; updateSetting("bypass_llm" as keyof AppSettings, next); }}
+                    className={`relative w-[46px] h-[28px] rounded-full transition-all duration-200 flex-shrink-0 ${
+                      settings.bypass_llm === "true"
+                        ? "bg-primary"
+                        : "bg-surface-container-highest border border-on-surface/[0.15]"
+                    }`}
+                    role="switch"
+                    aria-checked={settings.bypass_llm === "true"}
+                  >
+                    <span className={`absolute top-[4px] left-[4px] w-[20px] h-[20px] rounded-full bg-white shadow transition-transform duration-200 ${
+                      settings.bypass_llm === "true" ? "translate-x-[18px]" : "translate-x-0"
+                    }`} />
+                  </button>
+                </div>
                 <div className="flex items-center justify-between py-2.5 min-h-[40px]">
                   <span className="text-sm text-on-surface">{t.transcription_input_lang}</span>
                   <div className="flex gap-1.5">

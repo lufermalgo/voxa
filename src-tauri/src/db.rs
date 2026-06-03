@@ -132,7 +132,8 @@ fn init_tables(conn: &Connection) -> Result<()> {
         ('shortcut_paste', 'CommandOrControl+Shift+V'),
         ('shortcut_cancel', 'Escape'),
         ('active_profile_id', '1'),
-        ('auto_detect_profile', 'true')",
+        ('auto_detect_profile', 'true'),
+        ('bypass_llm', 'false')",
         [],
     )?;
 
@@ -188,9 +189,9 @@ fn init_tables(conn: &Connection) -> Result<()> {
     }
 
     conn.execute(
-        "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default) VALUES
-        (1, 'Elegant', 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Keep the original language. Return ONLY the rewritten text, nothing else.', 'star', 1),
-        (2, 'Informal', 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Keep the original language. Return ONLY the final message, nothing else.', 'forum', 1),
+        "INSERT OR IGNORE INTO transformation_profiles (id, name, system_prompt, icon, is_default, formatting_mode) VALUES
+        (1, 'Elegant', 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Keep the original language. Return ONLY the rewritten text, nothing else.', 'star', 1, 'plain'),
+        (2, 'Informal', 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Keep the original language. Return ONLY the final message, nothing else.', 'forum', 1, 'plain'),
         (3, 'Code', 'You are a senior prompt engineer. Transform the voice note into a single, complete, ready-to-use AI prompt written in English. Use this structure — no extra text, no JSON, no code blocks, no duplicate versions:
 
 **Role:** [specific expert persona with relevant domain]
@@ -198,35 +199,10 @@ fn init_tables(conn: &Connection) -> Result<()> {
 **Task:** [precise, actionable instruction — exactly what the AI must do]
 **Expected output:** [describe the format and length of the desired response in plain text]
 
-Output ONLY the prompt. Nothing before, nothing after.', 'code', 1),
-        (4, 'Custom', 'Custom instructions: write here how you want the LLM to process your text.', 'tune', 1)",
+Output ONLY the prompt. Nothing before, nothing after.', 'code', 1, 'markdown'),
+        (4, 'Custom', 'Custom instructions: write here how you want the LLM to process your text.', 'tune', 1, 'plain')",
         [],
     )?;
-
-    // Forced update for existing installations — always overwrites to latest prompt version
-    let _ = conn.execute(
-        "UPDATE transformation_profiles SET name = 'Elegant', system_prompt = 'Rewrite the text with perfect grammar, spelling, and punctuation. Use formal vocabulary and well-structured sentences. Do not add or remove ideas — only refine the expression. Keep the original language. Return ONLY the rewritten text, nothing else.' WHERE id = 1",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'Rewrite the text as a natural, direct message for chat or Slack. Remove filler words and repetitions, fix obvious errors, but keep the relaxed tone and original voice. Keep the original language. Return ONLY the final message, nothing else.' WHERE id = 2",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE transformation_profiles SET system_prompt = 'You are a senior prompt engineer. Transform the voice note into a single, complete, ready-to-use AI prompt written in English. Use this structure — no extra text, no JSON, no code blocks, no duplicate versions:
-
-**Role:** [specific expert persona with relevant domain]
-**Context:** [1-2 sentences of relevant background and constraints]
-**Task:** [precise, actionable instruction — exactly what the AI must do]
-**Expected output:** [describe the format and length of the desired response in plain text]
-
-Output ONLY the prompt. Nothing before, nothing after.' WHERE id = 3",
-        [],
-    );
-
-    // Set formatting_mode for built-in profiles (idempotent)
-    let _ = conn.execute("UPDATE transformation_profiles SET formatting_mode = 'plain' WHERE id IN (1, 2, 4)", []);
-    let _ = conn.execute("UPDATE transformation_profiles SET formatting_mode = 'markdown' WHERE id = 3", []);
 
     Ok(())
 }

@@ -12,6 +12,7 @@ export interface AppSettings {
   shortcut_cancel: string;
   active_profile_id: string;
   auto_detect_profile: string;
+  bypass_llm: string;
 }
 
 export interface Profile {
