@@ -12,6 +12,8 @@ export interface AppSettings {
   shortcut_cancel: string;
   active_profile_id: string;
   auto_detect_profile: string;
+  bypass_llm: string;
+  max_recording_seconds: string;
 }
 
 export interface Profile {

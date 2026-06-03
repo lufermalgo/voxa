@@ -517,7 +517,17 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     }
 
                     // --- LLM refinement ---
-                    let refined_text = {
+                    // When bypass_llm is enabled, deliver the Whisper transcription
+                    // directly (after vocab replacement) with no model rewriting.
+                    let bypass_llm = app.state::<SettingsCache>()
+                        .get("bypass_llm")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+
+                    let refined_text = if bypass_llm {
+                        log::info!("LLM bypass enabled — delivering raw Whisper transcription.");
+                        raw_text.clone()
+                    } else {
                         let mut llama_lock = engine_state.llama.lock().unwrap();
 
                         // If the server process died externally (e.g. killall), detect it and

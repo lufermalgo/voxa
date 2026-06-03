@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-// Testing value: 60s. Production target: 360s (6 minutes).
-// Change DEFAULT_MAX_SECONDS to 360 once manual tests confirm the pipeline
-// handles long recordings correctly end-to-end.
+// Fallback used when no configured value is available. The actual limit is
+// user-configurable via the "max_recording_seconds" setting (General tab),
+// threaded down through RecorderPill.
 const DEFAULT_MAX_SECONDS = 60;
 const WARNING_THRESHOLD = 0.8; // 80% → pill turns amber
 const POPUP_THRESHOLD  = 0.9; // 90% → warning card appears

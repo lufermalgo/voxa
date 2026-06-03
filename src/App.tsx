@@ -18,10 +18,13 @@ function App() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [uiLocale, setUiLocale] = useState<Locale>("en");
+  const [maxRecordingSeconds, setMaxRecordingSeconds] = useState<number>(60);
 
   const fetchSettings = async (): Promise<Locale> => {
     try {
-      await invoke("get_settings");
+      const settings = await invoke<Record<string, string>>("get_settings");
+      const parsed = parseInt(settings.max_recording_seconds ?? "60", 10);
+      if (!Number.isNaN(parsed) && parsed > 0) setMaxRecordingSeconds(parsed);
       const systemLocale = await invoke<string>("get_system_locale");
       const locale: Locale = systemLocale.startsWith("es") ? "es" : "en";
       setUiLocale(locale);
@@ -119,6 +122,7 @@ function App() {
           refinedText={refinedText}
           rawText={rawText}
           profiles={profiles}
+          maxRecordingSeconds={maxRecordingSeconds}
         />
       </div>
     );
