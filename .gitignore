@@ -27,7 +27,8 @@ amical/
 .cursor/
 .gemini/
 .agent/
-.kiro/
+.kiro/*
+!.kiro/specs/
 .aind/
 .vscode/
 
