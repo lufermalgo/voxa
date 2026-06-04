@@ -74,13 +74,13 @@ When you correct a transcript, Voxa automatically extracts the new words and add
 
 ## 📦 Download
 
-**[→ Download Voxa v1.5.0 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.5.0)**
+**[→ Download Voxa v1.5.1 for macOS (Apple Silicon)](https://github.com/lufermalgo/voxa/releases/tag/v1.5.1)**
 
 > Requires macOS 13+ on Apple Silicon (M1/M2/M3/M4).
 
 ### Installation
 
-1. Download `Voxa_1.5.0_aarch64.dmg` from the link above.
+1. Download `Voxa_1.5.1_aarch64.dmg` from the link above.
 2. Open the `.dmg` and drag **Voxa** to your **Applications** folder.
 3. **Important — before opening Voxa**, run this command in Terminal to remove the macOS quarantine flag:
    ```bash
