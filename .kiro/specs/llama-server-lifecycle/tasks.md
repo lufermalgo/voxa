@@ -8,7 +8,7 @@ All files touched are Claude-owned — coordinate per AGENTS.md.
 
 ## Tasks
 
-- [ ] 1. Add process-ownership helpers
+- [x] 1. Add process-ownership helpers
   - Create `find_voxa_llama_servers()` that enumerates running `llama-server` processes
     whose args contain the Voxa model path; return their PIDs.
   - Add `terminate_pid(pid)` with SIGTERM → grace → SIGKILL escalation.
@@ -16,38 +16,38 @@ All files touched are Claude-owned — coordinate per AGENTS.md.
     path is NOT matched; the real Voxa path IS matched.
   - _Requirements: 1.1, 1.3, 2.1_
 
-- [ ] 2. Expose the child PID and write a PID file
+- [x] 2. Expose the child PID and write a PID file
   - Add `LlamaEngine::pid(&self) -> u32`.
   - On successful `LlamaEngine::new`, write the PID to `<app_data_dir>/llama-server.pid`.
   - On `Drop` and on explicit termination, remove the PID file.
   - Unit test the PID-file write/read/remove round-trip.
   - _Requirements: 2.3_
 
-- [ ] 3. Startup reconciliation pass
+- [x] 3. Startup reconciliation pass
   - In `lib.rs` setup, before pre-warm, on a background thread: read the PID file and
     reap a live Voxa-owned PID, then enumerate-and-reap any remaining Voxa-owned orphans.
   - Wrap in error handling that logs and continues on any failure (never block launch).
   - Ensure it runs off the main thread and does not delay window/shortcut setup.
   - _Requirements: 1.1, 1.2, 1.4, 5.1_
 
-- [ ] 4. Gate pre-warm on `bypass_llm`
+- [x] 4. Gate pre-warm on `bypass_llm`
   - In the pre-warm thread, read `bypass_llm` from `SettingsCache`; if `true`, skip
     spawning the server (log info). Leave the Whisper warm-up untouched.
   - Verify the existing lazy-start path in `pipeline.rs` still starts the server when
     `bypass_llm` is later turned off (no code dup; add a comment if confirmed).
   - _Requirements: 4.1, 4.2, 4.3, 5.2_
 
-- [ ] 5. Terminate child on shutdown signals
+- [x] 5. Terminate child on shutdown signals
   - Handle `tauri::RunEvent` exit to terminate the current child and remove the PID file.
   - Add a SIGTERM/SIGINT handler doing the same; keep `Drop` as fallback.
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 6. Single-instance guarantee on respawn
+- [x] 6. Single-instance guarantee on respawn
   - In `pipeline.rs`, when `is_alive()` is false, ensure the old PID (from handle or PID
     file) is terminated before spawning a replacement.
   - _Requirements: 2.1, 2.2_
 
-- [ ] 7. Verify & document
+- [x] 7. Verify & document
   - Run `cargo check` (must be clean).
   - Execute the manual verification checklist from design.md (crash-reap, bypass-no-spawn,
     clean-quit-stops-server) and record results in the PR.
