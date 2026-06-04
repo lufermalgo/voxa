@@ -5642,6 +5642,7 @@ dependencies = [
  "cpal",
  "env_logger",
  "futures-util",
+ "libc",
  "log",
  "objc",
  "ort",

@@ -1,7 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use std::fs::File;
+
+use crate::proc;
 
 /// Finds a free localhost port by asking the OS to assign one.
 fn find_free_port() -> u16 {
@@ -11,15 +13,26 @@ fn find_free_port() -> u16 {
 }
 
 pub struct LlamaEngine {
-    _process: Child,
+    process: Child,
     port: u16,
     client: reqwest::blocking::Client,
+    /// Path to the `<app_data_dir>/llama-server.pid` file written on a successful spawn,
+    /// removed on termination/`Drop`. `None` when no PID-file path was provided.
+    pid_file: Option<PathBuf>,
 }
 
 impl LlamaEngine {
     /// Spawns `llama-server` with the given model and waits until it reports healthy.
     /// The server stays alive for the lifetime of this struct (killed on Drop).
-    pub fn new(model_path: &Path, server_path: &Path) -> Result<Self, String> {
+    ///
+    /// When `pid_file` is `Some`, the child PID is persisted there on a successful start
+    /// (plain text, a single integer) so a future startup can reap this server even after
+    /// an unclean Voxa exit (Requirement 2.3). The file is removed on termination/`Drop`.
+    pub fn new(
+        model_path: &Path,
+        server_path: &Path,
+        pid_file: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let port = find_free_port();
 
         let mut cmd = Command::new(server_path);
@@ -81,7 +94,41 @@ impl LlamaEngine {
         }
 
         log::info!("LlamaServer ready on port {}", port);
-        Ok(Self { _process: process, port, client })
+
+        // Persist the child PID so a future startup can reap this server even after an
+        // unclean Voxa exit (Requirement 2.3). A write failure is non-fatal — the server
+        // is healthy; we just lose the cross-session reap hint, so log and continue.
+        if let Some(ref path) = pid_file {
+            if let Err(e) = proc::write_pid_file(path, process.id()) {
+                log::warn!("failed to write llama-server PID file {:?}: {}", path, e);
+            }
+        }
+
+        Ok(Self { process, port, client, pid_file })
+    }
+
+    /// Returns the PID of the spawned `llama-server` child process.
+    ///
+    /// Used to persist the PID file and to terminate the correct process on respawn or
+    /// shutdown (Requirement 2.3).
+    // Consumed by the startup-reconciliation, shutdown, and respawn tasks (3, 5, 6).
+    #[allow(dead_code)]
+    pub fn pid(&self) -> u32 {
+        self.process.id()
+    }
+
+    /// Explicitly terminate the `llama-server` child and remove the PID file.
+    ///
+    /// This is the deterministic shutdown path (used by shutdown-signal handling and
+    /// respawn); `Drop` remains as a best-effort fallback.
+    // Consumed by the shutdown and respawn tasks (5, 6).
+    #[allow(dead_code)]
+    pub fn terminate(&mut self) {
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+        if let Some(ref path) = self.pid_file {
+            proc::remove_pid_file(path);
+        }
     }
 
     /// Returns true if the llama-server process is still running and healthy.
@@ -177,7 +224,11 @@ impl LlamaEngine {
 
 impl Drop for LlamaEngine {
     fn drop(&mut self) {
-        let _ = self._process.kill();
-        let _ = self._process.wait();
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+        // Best-effort fallback cleanup: remove the PID file so it never names a dead PID.
+        if let Some(ref path) = self.pid_file {
+            proc::remove_pid_file(path);
+        }
     }
 }

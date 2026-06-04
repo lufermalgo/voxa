@@ -15,6 +15,7 @@ mod event_tap;
 mod llama_inference;
 mod models;
 mod pipeline;
+mod proc;
 mod shortcuts;
 mod tray;
 mod whisper_inference;
@@ -36,6 +37,14 @@ pub fn run() {
     let _ = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("info"),
     ).try_init();
+
+    // Block SIGINT/SIGTERM on the main thread BEFORE any other thread is spawned, so
+    // every thread inherits the block and these signals are delivered only to the
+    // dedicated waiter thread (spawned in `setup` via `sigwait`). This prevents the
+    // kernel from running the default (terminate) disposition on some worker thread,
+    // which would skip llama-server cleanup. (Requirement 3.2)
+    #[cfg(unix)]
+    block_shutdown_signals();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -142,12 +151,68 @@ pub fn run() {
                 post_text: Mutex::new(String::new()),
             });
 
+            // Spawn the dedicated shutdown-signal waiter (Requirement 3.2). It blocks in
+            // `sigwait` for SIGTERM/SIGINT (already blocked process-wide at the top of
+            // `run`), then terminates the llama-server child and exits the app cleanly so
+            // the normal `RunEvent` exit path also runs. This guarantees the child is
+            // reaped on signal-driven shutdown, not only on GUI quit — `Drop` stays as a
+            // best-effort fallback (Requirement 3.3).
+            #[cfg(unix)]
+            {
+                let app_signals = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(signal) = wait_for_shutdown_signal() {
+                        log::info!("Received shutdown signal {} — terminating llama-server", signal);
+                        terminate_llama_server(&app_signals);
+                        app_signals.exit(0);
+                    }
+                });
+            }
+
             // Pre-warm LlamaEngine in background (build OUTSIDE the mutex — see invariants)
             let app_warmup = app.handle().clone();
             std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(3));
                 let model_manager = app_warmup.state::<models::ModelManager>();
                 let engine_state  = app_warmup.state::<EngineState>();
+
+                // PID file lives at <app_data_dir>/llama-server.pid (base_path is
+                // <app_data_dir>/models), so its parent is the app data dir.
+                let pid_file = model_manager.base_path.parent()
+                    .map(crate::proc::llama_pid_file);
+
+                // Startup reconciliation (Requirements 1.1, 1.2, 1.4, 5.1): reap any
+                // Voxa-owned `llama-server` left behind by a previous (possibly crashed)
+                // session. This runs here, at the top of the background pre-warm thread,
+                // for two reasons:
+                //   * It is off the main thread, so it never delays window display or
+                //     shortcut registration (those happen synchronously in setup).
+                //   * It runs BEFORE the 3s sleep + spawn below, so reaping always
+                //     completes before this instance spawns its own server. The fresh
+                //     child does not exist yet at this point, so it can never be matched
+                //     and killed. Every step inside fails safe (logs + continues).
+                reconcile_llama_servers(
+                    &crate::proc::voxa_model_path_marker(&model_manager),
+                    pid_file.as_deref(),
+                );
+
+                // Bypass gate (Requirements 4.1, 4.3): if the user runs with
+                // `bypass_llm` enabled, the LLM is never used, so skip pre-warming
+                // `llama-server` and avoid reserving ~950 MB for nothing. Reconciliation
+                // above is intentionally NOT gated — orphans from previous non-bypassed
+                // sessions must still be reaped. The Whisper pre-warm thread is separate
+                // and is unaffected, so Whisper still warms normally when bypassed.
+                //
+                // Toggle-off-later (Requirement 4.2) is handled without duplication by the
+                // lazy-start path in `pipeline.rs`: on each dictation it re-reads
+                // `bypass_llm`, and when it is `false` and no engine is loaded it creates
+                // the `LlamaEngine` on demand. So nothing extra is needed here.
+                let bypass_llm = app_warmup.state::<SettingsCache>().get("bypass_llm").map(|v| v == "true").unwrap_or(false);
+                if bypass_llm {
+                    log::info!("LLM bypass enabled — skipping llama-server pre-warm");
+                    return;
+                }
+
+                std::thread::sleep(std::time::Duration::from_secs(3));
                 let model_path    = model_manager.get_llama_path();
                 if !model_path.exists() { return; }
                 let server_path = match model_manager.get_effective_llama_server() {
@@ -155,7 +220,7 @@ pub fn run() {
                 };
                 { let lock = engine_state.llama.lock().unwrap(); if lock.is_some() { return; } }
                 log::info!("Pre-loading LlamaEngine from {:?}", model_path);
-                match llama_inference::LlamaEngine::new(&model_path, &server_path) {
+                match llama_inference::LlamaEngine::new(&model_path, &server_path, pid_file) {
                     Ok(e) => {
                         let mut lock = engine_state.llama.lock().unwrap();
                         if lock.is_none() { *lock = Some(e); }
@@ -263,8 +328,144 @@ pub fn run() {
             commands::set_pill_warning_mode,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Deterministic shutdown (Requirement 3.1): terminate the llama-server child
+            // on every quit path. All GUI quit routes — Cmd+Q, the tray "Quit" item, and
+            // the `exit_app` command (which calls `app.exit`) — funnel through Tauri's
+            // `RunEvent` exit, so centralizing termination here covers them all rather
+            // than duplicating cleanup at each call site. `ExitRequested` is the earliest
+            // deterministic point; `Exit` is the final guarantee. `terminate_llama_server`
+            // is idempotent, so handling both is safe, and `Drop` on `LlamaEngine` remains
+            // a best-effort fallback (Requirement 3.3).
+            match event {
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                    terminate_llama_server(app_handle);
+                }
+                _ => {}
+            }
+        });
+}
+
+/// Terminate the current `llama-server` child (if any) and remove its PID file.
+///
+/// This is the deterministic shutdown path shared by the `RunEvent` exit handler and the
+/// SIGTERM/SIGINT handler. It locks `EngineState.llama` and, if a server is loaded, calls
+/// the explicit [`llama_inference::LlamaEngine::terminate`] (kill child + remove PID file).
+/// `Drop` on `LlamaEngine` stays as a best-effort fallback (Requirement 3.3).
+///
+/// Fails safe: if `EngineState` is not yet managed or the mutex is poisoned, it logs and
+/// returns rather than panicking, so shutdown is never blocked. Calling it more than once
+/// is harmless — `terminate` is idempotent (killing an already-dead child and removing an
+/// absent PID file are both no-ops).
+fn terminate_llama_server(app_handle: &tauri::AppHandle) {
+    let Some(engine_state) = app_handle.try_state::<EngineState>() else {
+        return;
+    };
+    let lock_result = engine_state.llama.lock();
+    match lock_result {
+        Ok(mut guard) => {
+            if let Some(engine) = guard.as_mut() {
+                log::info!("Shutdown: terminating llama-server child");
+                engine.terminate();
+            }
+        }
+        Err(e) => log::warn!("Shutdown: llama engine lock poisoned, skipping terminate: {}", e),
+    }
+}
+
+/// Block `SIGINT` and `SIGTERM` for the current (main) thread so the block is inherited by
+/// every thread spawned afterwards. With the signals blocked process-wide, the kernel will
+/// not run the default terminate disposition on an arbitrary thread; instead the dedicated
+/// waiter thread consumes them synchronously via [`wait_for_shutdown_signal`].
+#[cfg(unix)]
+fn block_shutdown_signals() {
+    // Safety: standard libc sigset_t manipulation. We zero-initialize the set, add the two
+    // signals, and install the mask with SIG_BLOCK. All pointers are to valid local state.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+        // pthread_sigmask on the main thread before spawning others => inherited by all.
+        let _ = libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+    }
+}
+
+/// Block until `SIGINT` or `SIGTERM` arrives, returning the signal number that was
+/// delivered (or `None` if `sigwait` fails). Must only be called after
+/// [`block_shutdown_signals`] has run, so the signals are pending-deliverable to this
+/// thread rather than acted on by their default disposition.
+#[cfg(unix)]
+fn wait_for_shutdown_signal() -> Option<i32> {
+    // Safety: we build a sigset containing exactly the signals blocked in
+    // `block_shutdown_signals`, then `sigwait` for one of them. `sig` is written by
+    // `sigwait` on success.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+        let mut sig: libc::c_int = 0;
+        if libc::sigwait(&set, &mut sig) == 0 {
+            Some(sig as i32)
+        } else {
+            None
+        }
+    }
+}
+
+/// Startup reconciliation: reap any Voxa-owned `llama-server` left behind by a prior
+/// (possibly crashed) session, so wired `--mlock` memory is not leaked across sessions.
+///
+/// Ordering (see design.md, Component 3) — runs off the main thread, before this
+/// instance spawns its own server:
+///   1. If the PID file names a live Voxa-owned server, terminate it and clear the file.
+///   2. Enumerate any *remaining* Voxa-owned orphans and terminate them too.
+///
+/// Every step fails safe: the `proc` helpers never panic and never return errors —
+/// enumeration yields an empty list on failure (so nothing is reaped on bad data), a
+/// missing/corrupt PID file is ignored, and `terminate_pid` is a no-op on a dead PID.
+/// This guarantees Requirement 1.4 / 5.1: a failure here logs and continues, never
+/// blocking launch.
+///
+/// Safety: only PIDs reported by [`crate::proc::find_voxa_llama_servers`] are touched, so
+/// the current instance's not-yet-spawned child and any unrelated `llama-server` are
+/// never killed (Requirement 1.3).
+fn reconcile_llama_servers(model_path_marker: &str, pid_file: Option<&std::path::Path>) {
+    // Authoritative snapshot of live Voxa-owned servers. Used both to confirm the
+    // PID-file server is still alive & ours and to find any other orphans.
+    let voxa_pids = crate::proc::find_voxa_llama_servers(model_path_marker);
+
+    // Step 1: reap the server named by the PID file, if it is still a live Voxa-owned
+    // process. Either way, clear the (now stale) PID file.
+    let mut reaped_from_pid_file: Option<u32> = None;
+    if let Some(path) = pid_file {
+        if let Some(pid) = crate::proc::read_pid_file(path) {
+            if voxa_pids.contains(&pid) {
+                log::info!("Startup reconcile: reaping tracked llama-server pid {} from PID file", pid);
+                crate::proc::terminate_pid(pid);
+                reaped_from_pid_file = Some(pid);
+            } else {
+                log::info!(
+                    "Startup reconcile: PID file named {} but it is not a live Voxa-owned server; clearing",
+                    pid
+                );
+            }
+            crate::proc::remove_pid_file(path);
+        }
+    }
+
+    // Step 2: reap any remaining Voxa-owned orphans (e.g. a crash that never wrote a PID
+    // file, or stale servers from older sessions). Skip the one already handled above.
+    for pid in voxa_pids {
+        if Some(pid) == reaped_from_pid_file {
+            continue;
+        }
+        log::info!("Startup reconcile: reaping orphaned Voxa-owned llama-server pid {}", pid);
+        crate::proc::terminate_pid(pid);
+    }
 }
 
 #[cfg(test)]

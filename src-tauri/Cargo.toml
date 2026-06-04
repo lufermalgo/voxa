@@ -62,3 +62,9 @@ core-foundation = "0.9"
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Used to install SIGTERM/SIGINT handlers so the llama-server child is terminated on
+# unix shutdown signals (llama-server-lifecycle spec, Requirement 3.2). Pinned to the
+# exact version already present transitively in Cargo.lock — adds no new resolution.
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.184"
+

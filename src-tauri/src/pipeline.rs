@@ -532,10 +532,18 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
 
                         // If the server process died externally (e.g. killall), detect it and
                         // clear the stale handle so the None branch below restarts it cleanly.
-                        if let Some(ref engine) = *llama_lock {
+                        // Single-instance guarantee (Requirements 2.1, 2.2): explicitly
+                        // `terminate()` the old engine (kills the child AND removes the PID
+                        // file) before dropping the handle — this is more deterministic than
+                        // relying on `Drop`. `respawning` then gates the extra orphan-reap
+                        // pass below so we only pay that cost when actually restarting.
+                        let mut respawning = false;
+                        if let Some(ref mut engine) = *llama_lock {
                             if !engine.is_alive() {
                                 log::warn!("LlamaEngine: server died externally, will restart.");
+                                engine.terminate();
                                 *llama_lock = None;
+                                respawning = true;
                             }
                         }
 
@@ -554,7 +562,45 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 log::info!("Starting llama-server from {:?}", server_path);
                                 let _ = app.emit("pipeline-status", "loading_llama");
                                 let t_llm_load = std::time::Instant::now();
-                                match llama_inference::LlamaEngine::new(&model_path, &server_path) {
+                                // PID file lives at <app_data_dir>/llama-server.pid
+                                // (base_path is <app_data_dir>/models).
+                                let pid_file = model_manager.base_path.parent()
+                                    .map(crate::proc::llama_pid_file);
+
+                                // Single-instance guarantee (Requirements 2.1, 2.2): when we
+                                // are respawning after detecting a dead/unhealthy engine, reap
+                                // any lingering Voxa-owned server before spawning the
+                                // replacement so at most one exists afterwards. The handle we
+                                // held was already `terminate()`d above, but a process orphaned
+                                // across an unclean exit (no handle here) would otherwise
+                                // survive. Mirrors the startup reconcile in lib.rs: read the PID
+                                // file, then enumerate. Runs only on the respawn path so the
+                                // already-healthy path pays no overhead, and BEFORE
+                                // `LlamaEngine::new`, so the brand-new server is never matched.
+                                // Every step fails safe (helpers never panic; terminate_pid is a
+                                // no-op on a dead PID).
+                                if respawning {
+                                    let marker = crate::proc::voxa_model_path_marker(&model_manager);
+                                    let voxa_pids = crate::proc::find_voxa_llama_servers(&marker);
+                                    let mut reaped: Option<u32> = None;
+                                    if let Some(ref path) = pid_file {
+                                        if let Some(pid) = crate::proc::read_pid_file(path) {
+                                            if voxa_pids.contains(&pid) {
+                                                log::info!("Respawn: reaping tracked llama-server pid {} before restart", pid);
+                                                crate::proc::terminate_pid(pid);
+                                                reaped = Some(pid);
+                                            }
+                                            crate::proc::remove_pid_file(path);
+                                        }
+                                    }
+                                    for pid in voxa_pids {
+                                        if Some(pid) == reaped { continue; }
+                                        log::info!("Respawn: reaping orphaned Voxa-owned llama-server pid {} before restart", pid);
+                                        crate::proc::terminate_pid(pid);
+                                    }
+                                }
+
+                                match llama_inference::LlamaEngine::new(&model_path, &server_path, pid_file) {
                                     Ok(e) => {
                                         let size_mb = std::fs::metadata(&model_path)
                                             .map(|m: std::fs::Metadata| m.len() as f64 / 1_048_576.0)
