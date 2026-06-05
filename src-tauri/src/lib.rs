@@ -25,7 +25,7 @@ use crate::audio::AudioEngine;
 use crate::db::{DbState, SettingsCache};
 use crate::pipeline::{
     CursorContext, DetectedProfile, DictationEvent, DictationSender, EngineState, FrontmostApp, ManualProfileOverride,
-    PipelineHandle, RecordingState,
+    PipelineHandle, RecordingState, StreamingWindowRx,
 };
 use crate::shortcuts::{NativeShortcuts, NATIVE_SHORTCUTS};
 
@@ -146,6 +146,7 @@ pub fn run() {
             app.manage(ManualProfileOverride(Mutex::new(None)));
             app.manage(DetectedProfile(Mutex::new(None)));
             app.manage(PipelineHandle { cancelled: Arc::new(AtomicBool::new(false)) });
+            app.manage(StreamingWindowRx(Mutex::new(None)));
             app.manage(CursorContext {
                 pre_text:  Mutex::new(String::new()),
                 post_text: Mutex::new(String::new()),

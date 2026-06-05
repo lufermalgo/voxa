@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, AtomicU64, Ordering}};
 use tauri::{Manager, Emitter};
-use crate::audio::{self, AudioEngine};
+use crate::audio::{self, AudioEngine, AudioWindow};
 use crate::db::{self, DbState, SettingsCache};
 use crate::llama_inference::{self, LlamaEngine};
 use crate::whisper_inference;
@@ -42,6 +42,15 @@ pub struct EngineState {
     pub whisper: Mutex<Option<whisper_inference::WhisperEngine>>,
     pub llama:   Mutex<Option<llama_inference::LlamaEngine>>,
 }
+
+/// Holds the `Receiver<AudioWindow>` opened by `StartRecording` (streaming path).
+///
+/// `StartRecording` stores the receiver here after calling
+/// `audio::setup_stream_streaming`.  `StopRecording` takes it out (leaving
+/// `None`) and passes it to `streaming_worker_from_channel`.  This state is
+/// reset to `None` at the start of every `StartRecording` to discard any
+/// stale receiver from a previous cancelled session.
+pub struct StreamingWindowRx(pub Mutex<Option<mpsc::Receiver<AudioWindow>>>);
 
 /// Managed state that allows graceful shutdown of background threads.
 pub struct PipelineHandle {
@@ -290,6 +299,206 @@ fn resolve_system_prompt(app: &tauri::AppHandle, db_state: &db::DbState) -> (Str
 }
 
 // ---------------------------------------------------------------------------
+// Streaming STT worker (Task 5 — Req 2.1, 2.2, 4.1, 4.2)
+// ---------------------------------------------------------------------------
+
+/// Assemble a final transcript from per-window `(index, text)` parts by
+/// de-duplicating overlapping seams (Task 6 — Req 2.3, 3.2).
+///
+/// ## Algorithm
+///
+/// The audio capture path feeds each STT window with a 1-second overlap tail
+/// (`OVERLAP_SAMPLES = 16 000` at 16 kHz).  Consecutive Whisper outputs
+/// therefore share roughly one second of speech at the seam.
+///
+/// For each consecutive pair `(prev_text, curr_text)`:
+/// 1. Tokenise both by whitespace.
+/// 2. Find the **longest suffix** of `prev_text` tokens that matches a
+///    **prefix** of `curr_text` tokens.
+/// 3. Require at least **2 consecutive matching tokens** before stripping
+///    (avoids false positives on common single words like "the", "a", "and").
+/// 4. Strip the matched prefix from `curr_text` before appending.
+/// 5. Limit the search to at most **20 tokens** (conservative — the 1-second
+///    overlap at 150 WPM ≈ 2–3 words, rarely more than 10).
+///
+/// The algorithm is deterministic: same inputs → same output.  It conservatively
+/// prefers under-deduplication over over-deduplication.
+///
+/// ## Edge cases
+/// - Single part:  returned as-is (trimmed).
+/// - Empty parts:  filtered out before processing.
+/// - All parts empty:  returns `""`.
+pub fn assemble_transcript(parts: &[(usize, String)]) -> String {
+    // Sort by window index so assembly is always in capture order.
+    let mut sorted: Vec<&(usize, String)> = parts.iter().collect();
+    sorted.sort_by_key(|(idx, _)| *idx);
+
+    // Strip empty parts.
+    let non_empty: Vec<&str> = sorted
+        .iter()
+        .map(|(_, text)| text.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    if non_empty.is_empty() {
+        return String::new();
+    }
+    if non_empty.len() == 1 {
+        return non_empty[0].to_string();
+    }
+
+    // Accumulate the de-duplicated transcript.
+    let mut result = non_empty[0].to_string();
+
+    for curr_text in &non_empty[1..] {
+        let prev_tokens: Vec<&str> = result.split_whitespace().collect();
+        let curr_tokens: Vec<&str> = curr_text.split_whitespace().collect();
+
+        if curr_tokens.is_empty() {
+            continue;
+        }
+
+        // Search for the longest suffix of prev that matches a prefix of curr.
+        // We cap both ends at 20 tokens to stay conservative.
+        let max_search = 20usize.min(prev_tokens.len()).min(curr_tokens.len());
+
+        let mut best_match_len: usize = 0;
+
+        // Try each possible overlap length from largest to smallest.
+        'outer: for overlap_len in (2..=max_search).rev() {
+            let suffix_start = prev_tokens.len().saturating_sub(overlap_len);
+            let prev_suffix = &prev_tokens[suffix_start..];
+            let curr_prefix = &curr_tokens[..overlap_len];
+
+            for (a, b) in prev_suffix.iter().zip(curr_prefix.iter()) {
+                if !tokens_match(a, b) {
+                    continue 'outer;
+                }
+            }
+
+            // All tokens matched — this is our best overlap.
+            best_match_len = overlap_len;
+            break;
+        }
+
+        // Strip the overlapping prefix from curr before appending.
+        let curr_deduped: Vec<&str> = curr_tokens[best_match_len..].to_vec();
+
+        if !curr_deduped.is_empty() {
+            result.push(' ');
+            result.push_str(&curr_deduped.join(" "));
+        }
+    }
+
+    result
+}
+
+/// Case-insensitive token comparison ignoring leading/trailing punctuation.
+///
+/// Whisper may produce slightly different capitalisation or punctuation on
+/// repeated speech (e.g. "Hello" vs "hello", "world." vs "world").  Stripping
+/// boundary punctuation and lowercasing makes the seam match more robust
+/// without risking false positives on actual different words.
+fn tokens_match(a: &str, b: &str) -> bool {
+    let normalize = |s: &str| -> String {
+        s.trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase()
+    };
+    let na = normalize(a);
+    let nb = normalize(b);
+    !na.is_empty() && na == nb
+}
+
+/// Run the STT worker loop over a pre-opened `AudioWindow` channel.
+///
+/// Intended to be called from a dedicated worker thread (spawned by the
+/// pipeline when `streaming_stt == true` and the window channel is open).
+/// The function blocks until the channel is closed (i.e. `stop_stream` drops
+/// the sender after dispatching the final window).
+///
+/// # Arguments
+/// * `whisper`      — mutable reference to the persistent `WhisperEngine`.  The
+///   engine is reused across all windows — no per-window reload (Req 4.1).
+/// * `window_rx`    — receiving end of the `AudioWindow` channel opened by
+///   `setup_stream_streaming`.
+/// * `language`     — BCP-47 language code (e.g. `"es"`, `"en"`).
+/// * `initial_prompt` — optional vocabulary/context prompt for Whisper.
+/// * `window_audio_secs` — nominal duration of each window in audio-seconds
+///   (10.0 for the standard 160 000-sample / 16 kHz window).
+///
+/// # Returns
+/// A `Vec<(usize, String)>` mapping window index → transcript text, in
+/// arrival order.  Pass to `assemble_transcript` to produce the final string.
+/// Returns `Err(String)` only on a hard engine failure; individual window
+/// errors are logged and skipped.
+pub fn streaming_worker_from_channel(
+    whisper: &mut whisper_inference::WhisperEngine,
+    window_rx: std::sync::mpsc::Receiver<audio::AudioWindow>,
+    language: &str,
+    initial_prompt: &str,
+    window_audio_secs: f64,
+) -> Result<Vec<(usize, String)>, String> {
+    let mut parts: Vec<(usize, String)> = Vec::new();
+
+    for window in window_rx {
+        // Determine the actual window index.  The final window sent by stop_stream
+        // uses usize::MAX as a sentinel; re-assign it a proper sequential index so
+        // assemble_transcript can sort correctly.
+        let effective_index = if window.is_final {
+            // Use the next index after the last received non-sentinel window.
+            parts
+                .iter()
+                .map(|(i, _)| *i)
+                .filter(|&i| i != usize::MAX)
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(0)
+        } else {
+            window.index
+        };
+
+        log::debug!(
+            "STT worker: transcribing window {} ({} samples, is_final={})",
+            effective_index,
+            window.samples.len(),
+            window.is_final
+        );
+
+        let t_win = std::time::Instant::now();
+        // Reuse the persistent engine — no per-window reload (Req 4.1).
+        // transcribe_window checks the audio-seconds counter and resets the
+        // Metal state between windows when the threshold is reached (Req 4.2).
+        match whisper.transcribe_window(&window.samples, language, initial_prompt, window_audio_secs) {
+            Ok(text) => {
+                let elapsed = t_win.elapsed().as_secs_f64();
+                let words = text.split_whitespace().count();
+                log::info!(
+                    "STT worker: window {} → {} words  ({:.2}s, RTF {:.2}x)",
+                    effective_index, words, elapsed,
+                    elapsed / window_audio_secs.max(0.01)
+                );
+                if !text.is_empty() {
+                    parts.push((effective_index, text));
+                }
+            }
+            Err(e) => {
+                // Individual window failures are non-fatal: log and continue.
+                // If a critical failure is needed the caller's catch block will
+                // handle it (Req 6.1 — full fallback is wired at the pipeline level).
+                log::error!("STT worker: window {} transcription failed: {}", effective_index, e);
+            }
+        }
+
+        if window.is_final {
+            log::debug!("STT worker: final window processed, exiting loop");
+            break;
+        }
+    }
+
+    Ok(parts)
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline loop
 // ---------------------------------------------------------------------------
 
@@ -331,8 +540,38 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                                 vad.reset();
                             }
                         }
+                        // Reset the incremental speech-detection flag (Req 5.1).
+                        audio_engine.reset_speech_flag();
+
+                        // Discard any stale receiver from a previous session.
+                        if let Ok(mut guard) = app.state::<StreamingWindowRx>().0.lock() {
+                            *guard = None;
+                        }
+
                         let mic_id = app.state::<SettingsCache>().get("mic_id");
-                        match audio::setup_stream(&audio_engine, mic_id) {
+
+                        // Choose between streaming and batch audio setup based on the flag.
+                        let streaming_stt = app.state::<SettingsCache>()
+                            .get("streaming_stt")
+                            .map(|v| v == "true")
+                            .unwrap_or(false);
+
+                        let setup_result = if streaming_stt {
+                            // Open the window channel; store receiver for StopRecording.
+                            match audio::setup_stream_streaming(&audio_engine, mic_id) {
+                                Ok(rx) => {
+                                    if let Ok(mut guard) = app.state::<StreamingWindowRx>().0.lock() {
+                                        *guard = Some(rx);
+                                    }
+                                    Ok(())
+                                }
+                                Err(e) => Err(e),
+                            }
+                        } else {
+                            audio::setup_stream(&audio_engine, mic_id)
+                        };
+
+                        match setup_result {
                             Ok(_) => {
                                 #[cfg(target_os = "macos")]
                                 if let Some(pid) = crate::event_tap::get_frontmost_app_pid() {
@@ -424,23 +663,13 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         continue;
                     }
 
-                    // Silence detection: Silero VAD v6 (preferred) or peak-amplitude fallback.
-                    // VAD processes the resampled 16 kHz samples in 512-sample frames.
-                    let is_silent = if let Some(vad_arc) = &audio_engine.vad {
-                        if let Ok(mut vad) = vad_arc.lock() {
-                            let mut any_speech = false;
-                            for chunk in samples.chunks(512) {
-                                if vad.process_frame(chunk) {
-                                    any_speech = true;
-                                    break;
-                                }
-                            }
-                            !any_speech
-                        } else {
-                            // Mutex poisoned — fall back to peak
-                            let peak = samples.iter().cloned().fold(0.0f32, f32::max);
-                            peak < 0.05
-                        }
+                    // Silence detection: read the incremental VAD flag accumulated during
+                    // capture (Req 5.1, 5.3). If the VAD engine was unavailable at startup,
+                    // fall back to peak-amplitude on the final buffer.
+                    let is_silent = if audio_engine.vad.is_some() {
+                        // Incremental path: speech_ever_detected was set by the capture
+                        // callback for each incoming frame — no extra pass needed (Req 5.3).
+                        !audio_engine.speech_ever_detected.load(std::sync::atomic::Ordering::SeqCst)
                     } else {
                         // VAD unavailable — fall back to peak-amplitude check
                         let peak = samples.iter().cloned().fold(0.0f32, f32::max);
@@ -458,8 +687,127 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                         .get("language")
                         .unwrap_or_else(|| "es".to_string());
 
-                    // --- Whisper transcription ---
-                    let raw_text = {
+                    // --- Streaming STT flag (Req 6.2) ---
+                    // When false (default), the pipeline follows the existing batch path
+                    // unchanged. When true, attempt the streaming (windowed) path — if it
+                    // fails for any reason, fall back to the batch path (Req 6.1).
+                    let streaming_stt = app.state::<SettingsCache>()
+                        .get("streaming_stt")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+
+                    // ── Streaming STT path (Req 2.1, 2.2, 2.3, 4.1, 4.2) ────────────
+                    // StartRecording opens the window channel and stores the Receiver in
+                    // StreamingWindowRx when streaming_stt == true.  Here we take it out
+                    // (leaving None so it can't be reused) and run the worker synchronously
+                    // (the channel is already closed — stop_stream sent the final window and
+                    // dropped the sender before returning `samples` above).
+                    //
+                    // Silence guard (Req 5.2): is_silent was checked above; if speech was
+                    // never detected we already `continue`d so we never reach here silently.
+                    //
+                    // Fallback (Req 6.1): any error in the streaming path sets
+                    // `streaming_result = None` and falls through to the batch path.
+                    let streaming_result: Option<String> = if streaming_stt {
+                        let rx_opt = {
+                            let state = app.state::<StreamingWindowRx>();
+                            let mut guard = state.0.lock().unwrap();
+                            guard.take()
+                        };
+                        if let Some(window_rx) = rx_opt {
+                            let initial_prompt = {
+                                let dict = {
+                                    let conn = db_state.conn.lock().unwrap();
+                                    db::get_custom_dictionary(&conn).unwrap_or_default()
+                                };
+                                if dict.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("Vocabulary: {}.", dict.join(", "))
+                                }
+                            };
+
+                            // Ensure the WhisperEngine is loaded.
+                            let engine_ready = {
+                                let mut whisper_lock = engine_state.whisper.lock().unwrap();
+                                if whisper_lock.is_none() {
+                                    let model_path = model_manager.get_whisper_path();
+                                    let _ = app.emit("pipeline-status", "loading_whisper");
+                                    let t_load = std::time::Instant::now();
+                                    match whisper_inference::WhisperEngine::new(&model_path) {
+                                        Ok(e) => {
+                                            let size_mb = std::fs::metadata(&model_path)
+                                                .map(|m: std::fs::Metadata| m.len() as f64 / 1_048_576.0)
+                                                .unwrap_or(0.0);
+                                            log::info!("Whisper loaded  {:.0}MB  {:.2}s", size_mb, t_load.elapsed().as_secs_f64());
+                                            *whisper_lock = Some(e);
+                                            true
+                                        }
+                                        Err(e) => {
+                                            log::error!("Whisper load failed (streaming path): {} — falling back to batch", e);
+                                            false
+                                        }
+                                    }
+                                } else {
+                                    true
+                                }
+                            };
+
+                            if engine_ready {
+                                let mut whisper_lock = engine_state.whisper.lock().unwrap();
+                                let whisper = whisper_lock.as_mut().unwrap();
+                                let window_audio_secs = audio::WINDOW_SAMPLES as f64 / audio::TARGET_SAMPLE_RATE as f64;
+                                let t_stt = std::time::Instant::now();
+                                match streaming_worker_from_channel(
+                                    whisper,
+                                    window_rx,
+                                    &language,
+                                    &initial_prompt,
+                                    window_audio_secs,
+                                ) {
+                                    Ok(parts) => {
+                                        let assembled = assemble_transcript(&parts);
+                                        let elapsed = t_stt.elapsed().as_secs_f64();
+                                        let words = assembled.split_whitespace().count();
+                                        log::info!(
+                                            "Streaming STT: {} windows → {} words  ({:.2}s)",
+                                            parts.len(), words, elapsed
+                                        );
+                                        // Empty assembled transcript means all windows were
+                                        // blank or the channel was drained with no output.
+                                        // Fall through to batch rather than delivering nothing
+                                        // (Req 6.1).
+                                        if assembled.is_empty() {
+                                            log::warn!("Streaming STT produced empty transcript — falling back to batch");
+                                            None
+                                        } else {
+                                            log::info!("Streaming transcription: {}", assembled);
+                                            Some(assembled)
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Streaming STT worker failed: {} — falling back to batch", e);
+                                        None
+                                    }
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            // StartRecording didn't open a window channel (shouldn't happen
+                            // if streaming_stt was true, but guard against it).
+                            log::warn!("streaming_stt enabled but no window channel found — using batch fallback");
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // --- Whisper transcription (batch path) ---
+                    // Used when streaming_stt == false, or as fallback when streaming failed.
+                    let raw_text = if let Some(assembled) = streaming_result {
+                        assembled
+                    } else {
                         let mut whisper_lock = engine_state.whisper.lock().unwrap();
                         if whisper_lock.is_none() {
                             let model_path = model_manager.get_whisper_path();
@@ -767,6 +1115,12 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     let audio_engine = app.state::<AudioEngine>();
                     let mic_id = app.state::<SettingsCache>().get("mic_id");
                     let _ = audio::stop_stream(&audio_engine, mic_id);
+                    // Drop the streaming channel receiver so the audio sender
+                    // (already dropped by stop_stream above) is fully cleaned up
+                    // and doesn't linger until the next StartRecording (Req 6.1).
+                    if let Ok(mut guard) = app.state::<StreamingWindowRx>().0.lock() {
+                        *guard = None;
+                    }
                     *app.state::<DetectedProfile>().0.lock().unwrap() = None;
                     let _ = app.emit("pipeline-status", "idle");
                 }
@@ -843,5 +1197,147 @@ mod tests {
 
         assert!(g2 > g1);
         assert!(g3 > g2);
+    }
+
+    // -------------------------------------------------------------------------
+    // assemble_transcript — seam de-duplication (Task 6, Req 2.3, 3.2)
+    // -------------------------------------------------------------------------
+
+    /// Single part: returned unchanged (no dedup needed).
+    #[test]
+    fn assemble_single_part_returned_unchanged() {
+        let parts = vec![(0usize, "Hello world this is a test".to_string())];
+        assert_eq!(assemble_transcript(&parts), "Hello world this is a test");
+    }
+
+    /// Empty parts list: returns empty string.
+    #[test]
+    fn assemble_empty_parts_returns_empty() {
+        let parts: Vec<(usize, String)> = vec![];
+        assert_eq!(assemble_transcript(&parts), "");
+    }
+
+    /// Parts that are entirely whitespace are skipped.
+    #[test]
+    fn assemble_whitespace_parts_are_skipped() {
+        let parts = vec![
+            (0usize, "   ".to_string()),
+            (1usize, "Hello world".to_string()),
+            (2usize, "  \t  ".to_string()),
+        ];
+        assert_eq!(assemble_transcript(&parts), "Hello world");
+    }
+
+    /// No overlap: two disjoint parts concatenate correctly.
+    #[test]
+    fn assemble_no_overlap_concatenates() {
+        // Windows with completely different content — no shared tokens at seam.
+        let parts = vec![
+            (0usize, "The quick brown fox".to_string()),
+            (1usize, "jumps over the lazy dog".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        assert_eq!(result, "The quick brown fox jumps over the lazy dog");
+    }
+
+    /// Exact overlap: shared tokens at seam are de-duplicated.
+    ///
+    /// Simulates a 1-second overlap where Whisper repeated "lazy dog" at the
+    /// boundary.
+    #[test]
+    fn assemble_exact_overlap_deduplicates() {
+        // Window 0 ends with "lazy dog"; window 1 starts with "lazy dog" (seam repeat).
+        let parts = vec![
+            (0usize, "The quick brown fox jumps over the lazy dog".to_string()),
+            (1usize, "lazy dog sits by the fire".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        // "lazy dog" should appear exactly once at the boundary.
+        assert_eq!(
+            result,
+            "The quick brown fox jumps over the lazy dog sits by the fire"
+        );
+    }
+
+    /// Partial match: only a partial suffix/prefix matches — strip only the matched part.
+    #[test]
+    fn assemble_partial_overlap_strips_matched_portion() {
+        // Window 0 ends with "the lazy dog"; window 1 starts with "lazy dog barked".
+        // "lazy dog" (2 tokens) should be stripped from window 1.
+        let parts = vec![
+            (0usize, "Running through the lazy dog".to_string()),
+            (1usize, "lazy dog barked loudly".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        assert_eq!(result, "Running through the lazy dog barked loudly");
+    }
+
+    /// Single common word at seam does NOT trigger dedup (< 2 tokens required).
+    #[test]
+    fn assemble_single_token_overlap_not_stripped() {
+        // "dog" is shared but only 1 token — must NOT be deduped.
+        let parts = vec![
+            (0usize, "I saw the big dog".to_string()),
+            (1usize, "dog ran away quickly".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        // "dog" should appear twice because 1-token match is below the 2-token threshold.
+        assert_eq!(result, "I saw the big dog dog ran away quickly");
+    }
+
+    /// Parts are sorted by index before assembly (out-of-order delivery).
+    #[test]
+    fn assemble_sorts_by_index() {
+        let parts = vec![
+            (2usize, "the lazy dog".to_string()),
+            (0usize, "The quick brown".to_string()),
+            (1usize, "brown fox jumps".to_string()),
+        ];
+        // Index 0: "The quick brown"
+        // Index 1: "brown fox jumps" — "brown" alone is 1 token, not stripped.
+        //   But the algorithm tries suffix of index 0 tokens vs prefix of index 1.
+        //   The last token of index 0 is "brown" and the first of index 1 is "brown" (1 token) — NOT stripped.
+        // Index 2: "the lazy dog" — "the" alone is 1 token — NOT stripped.
+        let result = assemble_transcript(&parts);
+        // All three parts joined; single-token overlaps ("brown", "the") not stripped.
+        assert_eq!(result, "The quick brown brown fox jumps the lazy dog");
+    }
+
+    /// Case-insensitive seam dedup: "Hello" and "hello" match.
+    #[test]
+    fn assemble_case_insensitive_dedup() {
+        let parts = vec![
+            (0usize, "I said Hello world".to_string()),
+            (1usize, "Hello world and goodbye".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        assert_eq!(result, "I said Hello world and goodbye");
+    }
+
+    /// Punctuation-tolerant dedup: "world." matches "world" at seam.
+    #[test]
+    fn assemble_punctuation_tolerant_dedup() {
+        let parts = vec![
+            (0usize, "Hello world.".to_string()),
+            (1usize, "world said goodbye.".to_string()),
+        ];
+        // "world." and "world" should match (punctuation stripped for comparison).
+        // Only "world" is 1 token — below threshold, so NOT stripped.
+        let result = assemble_transcript(&parts);
+        assert_eq!(result, "Hello world. world said goodbye.");
+    }
+
+    /// Three windows with a two-token overlap at each seam.
+    #[test]
+    fn assemble_three_windows_with_overlap() {
+        let parts = vec![
+            (0usize, "one two three four five".to_string()),
+            (1usize, "four five six seven eight".to_string()),
+            (2usize, "seven eight nine ten".to_string()),
+        ];
+        let result = assemble_transcript(&parts);
+        // Seam 0→1: "four five" (2 tokens) stripped from window 1.
+        // Seam 1→2: "seven eight" (2 tokens) stripped from window 2.
+        assert_eq!(result, "one two three four five six seven eight nine ten");
     }
 }
