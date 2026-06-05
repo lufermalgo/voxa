@@ -12,6 +12,12 @@ edition = "2021"
 name = "Voxa"
 path = "src/main.rs"
 
+# Throwaway spike harness (Task 1 — streaming STT decision gate).
+# Remove after GO/NO-GO decision is made.
+[[bin]]
+name = "streaming_spike"
+path = "src/bin/streaming_spike.rs"
+
 [lib]
 name = "voxa_lib"
 crate-type = ["cdylib", "rlib"]
