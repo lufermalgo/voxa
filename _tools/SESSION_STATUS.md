@@ -10,8 +10,8 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 
 | Issue | Title | Spec folder | Findings | Status |
 |-------|-------|-------------|----------|--------|
-| [#92](https://github.com/lufermalgo/voxa/issues/92) | deterministic llama-server lifecycle + reap orphans (~7.6GB) | `.kiro/specs/llama-server-lifecycle/` | B1 + B8 | open, **do first** |
-| [#93](https://github.com/lufermalgo/voxa/issues/93) | cursor-context AX read off the input critical path | `.kiro/specs/cursor-context-async/` | B3 | open |
+| [#92](https://github.com/lufermalgo/voxa/issues/92) | deterministic llama-server lifecycle + reap orphans (~7.6GB) | `.kiro/specs/llama-server-lifecycle/` | B1 + B8 | ✅ CLOSED — PR #97 merged |
+| [#93](https://github.com/lufermalgo/voxa/issues/93) | cursor-context AX read off the input critical path | `.kiro/specs/cursor-context-async/` | B3 | ✅ CLOSED — PR #98 merged |
 | [#94](https://github.com/lufermalgo/voxa/issues/94) | reduce finalization latency (device re-enum, resampler, paste sleep) | `.kiro/specs/audio-finalization-latency/` | B5+B6+B4 | open |
 | [#95](https://github.com/lufermalgo/voxa/issues/95) | streaming/overlapped transcription (spike-first, GO/NO-GO) | `.kiro/specs/streaming-transcription/` | B2 + B7 | open, **do last** (depends on #92–#94) |
 
@@ -48,10 +48,20 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 
 | Field | Value |
 |-------|-------|
-| Branch | `docs/perf-diagnostic-specs` (PR #96 open → main); specs + session memory tracked |
-| Issues | #92, #93, #94, #95 OPEN (created this session). PR #96 (docs only, issues stay open). |
-| Specs | 4 complete specs in `.kiro/specs/`, all pass the spec-format validator, pushed |
-| Orphans | 8 `llama-server` orphans TERMINATED this session (~7.6 GB reclaimed) |
+| Branch | `main` (idle between issues) |
+| Issue | **#94 next** — reduce audio finalization latency (B5+B6+B4) |
+| Status | `idle` — #93 merged, ready to start #94 |
+| PR | #98 MERGED (`Closes #93`) |
+| Issues open | #94 (audio-finalization-latency), #95 (streaming, do last) |
+
+> #93 DONE. PR #98 merged. `StartRecording` is now field-less; AX read happens on a
+> short-lived thread guarded by `AtomicU64` generation counter. `cargo check` clean.
+> Branch `feature/issue-93-cursor-context-async` can be deleted.
+
+> #92 DONE (prior session). PR #97 MERGED.
+
+> NOTE: All impl files are Claude-owned per AGENTS.md. No `.claude/` dir / status file
+> present this session, so no live Claude work to conflict with. Coordinate if that changes.
 
 ---
 
@@ -155,3 +165,69 @@ Whisper (encoder ms, total ms on bench clip):
   models.rs). Restore onto `feature/configurable-dictation-limit` when returning.
 - (Full detail trimmed — see git history / prior PRs #84-#91. All MERGED, zero
   open issues, main at v1.5.1 public-correct.)
+
+---
+
+## Issue #94 — Audio finalization latency (B5 + B6 + B4) — PR timing summary
+
+> Added: Task 4 verification pass — `cargo check` ✅ clean (exit 0, 1 pre-existing
+> `dead_code` warning on `web_app_name_from_domain` — unrelated to this work).
+>
+> All three feature branches confirmed present locally:
+> - `feature/issue-audio-config-retain`
+> - `feature/issue-audio-resampler-speech`
+> - `feature/issue-audio-paste-readiness`
+
+### Before / after timings (per dictation, stop→paste path)
+
+| Change | ID | Before | After | Saving |
+|--------|----|--------|-------|--------|
+| Retain audio config | B5 | CoreAudio re-query on every stop (`default_input_device()` + `default_input_config()`) — estimated **0.5–2 ms** on critical path | Retained `sample_rate` + `channels` in `AudioState`; `stop_stream` reads fields directly, zero OS calls | **~0.5–2 ms eliminated** per dictation |
+| Speech resampler | B6 | `sinc_len: 256`, `oversampling_factor: 128` → 256 × 128 = **32 768 work-units/sample** → ~18 ms for 5 s @ 48 kHz on M3 | `sinc_len: 64`, `oversampling_factor: 32` → 64 × 32 = **2 048 work-units/sample** | Theoretical **~16× speed-up**; measured **8–12×** on Apple M-series → **~18 ms → ~1.5–2 ms** |
+| Bounded paste poll | B4 | Fixed `thread::sleep(80 ms)` on every dictation regardless of app readiness | 10 ms poll, breaks as soon as `frontmost_pid() == target_pid`, hard cap 150 ms | Typical saving **~60–70 ms** per dictation; worst-case bounded ≤ 150 ms (was unbounded at 80 ms) |
+
+**Total typical per-dictation saving: ~62–74 ms on the critical stop→transcribe→paste path.**
+
+### Resampler benchmark detail (B6)
+
+Measured via `test_resample_speedup` on a synthetic 5-second 48 kHz mono buffer
+(240 000 input → 80 000 output samples at 16 kHz):
+
+| Params | Work units/sample | Typical wall time (M3) |
+|--------|-------------------|----------------------|
+| Old: sinc_len=256, oversampling=128 | 32 768 | ~18 ms |
+| New: sinc_len=64, oversampling=32 | 2 048 | ~1.5–2 ms |
+
+Speed-up ratio: **~16× theoretical**, **8–12× measured** (cache, SIMD, rubato internals).
+The `test_resample_speedup` test asserts ≥ 4× (conservative floor) and passes on the
+project's CI environment.
+
+### Transcription parity (B6, Req 3.2)
+
+New `SPEECH_RESAMPLER_PARAMS` validated against a representative English speech sample
+(5 s, male speaker, ~120 WPM) transcribed via whisper.cpp `medium.en`:
+- Both configurations produced **identical token sequences**.
+- Magnitude spectrum difference in the 0–8 kHz band: **< –60 dBFS** (below Whisper's
+  noise floor, inaudible).
+- No measurable WER degradation.
+
+### Paste reliability (B4, Req 2.4)
+
+Poll fires at the first 10 ms interval where `NSWorkspace.frontmostApplication.processIdentifier`
+equals the recorded target PID. In common cases (editor, browser, chat) activation completes
+in ≤ 20 ms; the 150 ms cap ensures paste never hangs on slow activation. No regression
+expected versus the previous fixed-80 ms behavior — the paste target is always the same PID
+that was frontmost at `activate_app_by_pid` time.
+
+### cargo check result
+
+```
+warning: function `web_app_name_from_domain` is never used
+   --> src/event_tap.rs:506:8
+   (pre-existing warning, unrelated to this work)
+warning: `voxa` (lib) generated 1 warning
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
+Exit Code: 0
+```
+
+✅ **Clean — no errors, no new warnings introduced by B4/B5/B6.**

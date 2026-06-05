@@ -152,6 +152,21 @@ pub fn play_sound(name: &str) {
     let _ = std::process::Command::new("afplay").arg(path).spawn();
 }
 
+/// Returns the true PID of the current frontmost application, with no filtering.
+/// Used by the paste-readiness poll (B4) to check when the target app becomes active.
+/// Unlike `get_frontmost_app_pid`, this does NOT exclude Voxa's own PID — the poll
+/// target is always the previously-focused third-party app, so no exclusion is needed.
+#[cfg(target_os = "macos")]
+pub fn frontmost_pid() -> Option<i32> {
+    unsafe {
+        let workspace: cocoa::base::id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let frontmost: cocoa::base::id = msg_send![workspace, frontmostApplication];
+        if frontmost.is_null() { return None; }
+        let pid: i32 = msg_send![frontmost, processIdentifier];
+        Some(pid)
+    }
+}
+
 /// Returns the PID of the current frontmost application, excluding Voxa itself.
 #[cfg(target_os = "macos")]
 pub fn get_frontmost_app_pid() -> Option<i32> {

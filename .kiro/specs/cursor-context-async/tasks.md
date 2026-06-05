@@ -8,33 +8,33 @@ coordinate per AGENTS.md.
 
 ## Tasks
 
-- [ ] 1. Add a generation counter to CursorContext
+- [x] 1. Add a generation counter to CursorContext
   - Add `generation: AtomicU64` to the `CursorContext` struct in `pipeline.rs`.
   - On StartRecording: increment generation, clear `pre_text`/`post_text`.
   - _Requirements: 4.1, 4.2_
 
-- [ ] 2. Remove the blocking AX read from the event-tap callback
+- [x] 2. Remove the blocking AX read from the event-tap callback
   - In `event_tap.rs::native_tap_callback`, stop calling `get_cursor_context()` inline on
     the start key path; emit `StartRecording` immediately.
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 3. Spawn the async cursor-context read on StartRecording
+- [x] 3. Spawn the async cursor-context read on StartRecording
   - In the StartRecording handler (pipeline.rs), capture the current generation, spawn a
     short-lived thread that runs `get_cursor_context()` and stores the result only if the
     generation still matches.
   - _Requirements: 2.1, 3.1, 3.2, 4.1, 4.2_
 
-- [ ] 4. Keep StopRecording non-blocking
+- [x] 4. Keep StopRecording non-blocking
   - Confirm StopRecording reads `pre_text`/`post_text` without waiting for the async read;
     empty context is acceptable for very short dictations.
   - _Requirements: 2.2, 2.3_
 
-- [ ] 5. Unit test the generation guard
+- [x] 5. Unit test the generation guard
   - Test that a stale generation does not overwrite the current context and a matching one
     does.
   - _Requirements: 4.1, 4.2_
 
-- [ ] 6. Verify & document
+- [x] 6. Verify & document
   - `cargo check` clean.
   - Manual checklist from design.md (slow-AX app first-words, context still matches, rapid
     dictations isolation). Record in PR.
