@@ -13,7 +13,7 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 | [#92](https://github.com/lufermalgo/voxa/issues/92) | deterministic llama-server lifecycle + reap orphans (~7.6GB) | `.kiro/specs/llama-server-lifecycle/` | B1 + B8 | ✅ CLOSED — PR #97 merged |
 | [#93](https://github.com/lufermalgo/voxa/issues/93) | cursor-context AX read off the input critical path | `.kiro/specs/cursor-context-async/` | B3 | ✅ CLOSED — PR #98 merged |
 | [#94](https://github.com/lufermalgo/voxa/issues/94) | reduce finalization latency (device re-enum, resampler, paste sleep) | `.kiro/specs/audio-finalization-latency/` | B5+B6+B4 | ✅ CLOSED — PR #99 merged |
-| [#95](https://github.com/lufermalgo/voxa/issues/95) | streaming/overlapped transcription (spike-first, GO/NO-GO) | `.kiro/specs/streaming-transcription/` | B2 + B7 | open, **do last** (depends on #92–#94) |
+| [#95](https://github.com/lufermalgo/voxa/issues/95) | streaming/overlapped transcription (spike-first, GO/NO-GO) | `.kiro/specs/streaming-transcription/` | B2 + B7 | ✅ CLOSED — PR #100 merged |
 
 ### How to start each session (recipe)
 1. Read this file + `.claude/status.md` (other agent) before touching anything.
@@ -48,20 +48,24 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 
 | Field | Value |
 |-------|-------|
-| Branch | `main` (idle between issues) |
-| Issue | **#94 next** — reduce audio finalization latency (B5+B6+B4) |
-| Status | `idle` — #93 merged, ready to start #94 |
-| PR | #98 MERGED (`Closes #93`) |
-| Issues open | #94 (audio-finalization-latency), #95 (streaming, do last) |
+| Branch | `feature/growth-readme-seo` |
+| Status | `in-progress` |
+| PR | pending |
+| Version | **1.6.0** — tag `v1.6.0` pushed, GitHub Release LIVE |
+| Release | https://github.com/lufermalgo/voxa/releases/tag/v1.6.0 — `Voxa_1.6.0_aarch64.dmg` (16 MB) |
 
-> #93 DONE. PR #98 merged. `StartRecording` is now field-less; AX read happens on a
-> short-lived thread guarded by `AtomicU64` generation counter. `cargo check` clean.
-> Branch `feature/issue-93-cursor-context-async` can be deleted.
+### Files being touched
+- `README.md` — SEO + growth optimization (comparison table, reordered sections, new title, optimized tagline, star badge, contributing CTA)
 
-> #92 DONE (prior session). PR #97 MERGED.
+> v1.6.0 version bump (PR #102) ships #97–#100 since v1.5.1 tag. DMG built locally +
+> verified (CFBundleShortVersionString=1.6.0). NOT yet tagged/released on GitHub —
+> pending user decision on whether to publish a `v1.6.0` GitHub Release (CI triggers on `v*`).
 
-> NOTE: All impl files are Claude-owned per AGENTS.md. No `.claude/` dir / status file
-> present this session, so no live Claude work to conflict with. Coordinate if that changes.
+> #94 DONE (prior session). PRs #99a/b/c merged (`Closes #94`).
+
+> #93 DONE. PR #98 MERGED. #92 DONE. PR #97 MERGED.
+
+> All 4 diagnostic specs are now fully implemented and merged to main. 🎉
 
 ---
 

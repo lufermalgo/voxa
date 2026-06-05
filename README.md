@@ -1,76 +1,85 @@
-# Voxa
+# Voxa — Local AI Dictation for macOS
 
 <div align="center">
-  <img src="./public/voxa_logo.png" width="20%" alt="Voxa Voice Interface" />
-  
+  <img src="./public/voxa_logo.png" width="20%" alt="Voxa — Local AI Dictation for macOS" />
+
   <p align="center">
-    <strong>The Silent Conductor of Your Digital Workflow.</strong><br />
-    <em>System-wide voice dictation for macOS — 100% local, no cloud, no subscriptions.</em>
+    <strong>Dictate into any app. Transform with local AI. No cloud. No subscription. Free forever.</strong>
   </p>
 
   <p align="center">
-    <img src="https://img.shields.io/badge/Stack-Tauri%20%7C%20Rust%20%7C%20React-blueviolet?style=for-the-badge" alt="Stack" />
-    <img src="https://img.shields.io/badge/Platform-macOS-white?style=for-the-badge&logo=apple" alt="Platform" />
+    <a href="https://github.com/lufermalgo/voxa/releases/tag/v1.6.0">
+      <img src="https://img.shields.io/badge/Download-v1.6.0-blue?style=for-the-badge" alt="Download v1.6.0" />
+    </a>
+    <img src="https://img.shields.io/github/stars/lufermalgo/voxa?style=for-the-badge&color=yellow" alt="GitHub Stars" />
+    <img src="https://img.shields.io/badge/Platform-macOS%2013%2B-white?style=for-the-badge&logo=apple" alt="Platform" />
     <img src="https://img.shields.io/badge/Privacy-100%25%20Local-green?style=for-the-badge" alt="Privacy" />
+    <img src="https://img.shields.io/badge/Stack-Tauri%20%7C%20Rust%20%7C%20React-blueviolet?style=for-the-badge" alt="Stack" />
+    <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="License" />
   </p>
 </div>
 
 ---
 
-**Voxa** is a free, open-source **macOS dictation app** that transcribes your voice and injects text into any application — without sending a single byte to the cloud. Powered by [Whisper](https://github.com/ggerganov/whisper.cpp) for speech-to-text and a local LLM ([llama.cpp](https://github.com/ggerganov/llama.cpp)) for intelligent post-processing, Voxa runs entirely on your machine.
+**Voxa** is a free, open-source macOS dictation app that transcribes your voice and injects text into any application — then transforms it with a **local LLM using customizable profiles**. Powered by [Whisper](https://github.com/ggerganov/whisper.cpp) for speech-to-text and [llama.cpp](https://github.com/ggerganov/llama.cpp) for intelligent post-processing, everything runs entirely on your machine.
 
-> No API keys. No subscriptions. No data leaves your device.
+> No API keys. No subscriptions. No data leaves your device. Ever.
 
-## 💎 Philosophy
+---
 
-Voxa isn't just another dictation app. It's a **High-Density, Minimalist Interface** designed following the **"Silent Conductor"** philosophy. It lives at the edge of your screen, ready to translate your thoughts into text directly into any application, without the friction of traditional UI.
+## Why Voxa over Superwhisper / Wispr Flow / VoiceInk?
 
-Inspired by premium tools like *Wispr Flow*, Voxa focuses on speed, local-first intelligence, and an interface that feels like a piece of digital jewelry.
+| | **Voxa** | Wispr Flow | Superwhisper | VoiceInk |
+|---|:---:|:---:|:---:|:---:|
+| Price | ✅ **Free forever** | $20/month | $5/month | $25 one-time |
+| Fully local processing | ✅ 100% | ❌ Cloud | Partial | ✅ |
+| Local LLM transformation | ✅ On-device | ✅ Cloud | ❌ | ❌ |
+| Unlimited custom AI profiles | ✅ | Limited | ❌ | ❌ |
+| Open source | ✅ | ❌ | ❌ | ✅ |
+| No API key required | ✅ | ❌ | ❌ | ✅ |
+| Works in any app | ✅ | ✅ | ✅ | ✅ |
+| Apple Silicon native | ✅ | ✅ | ✅ | ✅ |
+
+Voxa's biggest differentiator: **it doesn't just transcribe — it thinks**. Every dictation passes through a local LLM that reshapes your output based on the context you choose, without sending a single byte to any server.
+
+---
 
 ## ✨ Features
 
-### 🎙 Dictation
-- **System-Wide Injection**: Works in every app — browser, editor, terminal, Slack. Just talk, Voxa handles the `Cmd+V`.
-- **VAD-Reactive Animation**: The recording pill responds in real time to your microphone level — silence dampens, speech drives the wave.
-- **Focus Preservation**: Returns focus to the exact app you were typing in after injection, including Electron and JVM targets (VS Code, IntelliJ, Cursor).
-- **Ultra-Compact Pill**: A floating Obsidian Glass interface that stays 15px from your Dock — always visible, never in the way.
-- **Configurable Recording Limit**: Set how long a single dictation can run before it auto-stops (30s–600s) from Settings → General. Raise it for long-form dictation like code prompts; lower it to keep takes short.
-- **Launch at Login**: Optionally start Voxa automatically when you log in to macOS. Toggle it in Settings → General → Behavior.
+### 🧠 Transformation Profiles — the core differentiator
 
-### 🧠 Transformation Profiles
-
-The most powerful feature of Voxa. Instead of just transcribing, Voxa passes your voice through a local LLM that reshapes the output according to a **profile** — without sending anything to the cloud.
-
-Four built-in profiles, each purpose-built:
+Instead of raw transcription, Voxa passes your voice through a local LLM that reshapes the output according to a **profile**. Four built-in, unlimited custom:
 
 | Profile | What it does |
 |---------|--------------|
 | **Elegant** | Rewrites with perfect grammar and formal vocabulary. Keeps your ideas, elevates the expression. |
 | **Informal** | Cleans up filler words and repetitions, keeps your natural tone. Great for Slack and chat. |
-| **Code** | Acts as a prompt engineer. Transforms your voice note into a structured, ready-to-use AI prompt (Role / Context / Task / Expected output). |
+| **Code** | Acts as a prompt engineer. Turns your voice note into a structured, ready-to-use AI prompt (Role / Context / Task / Expected output). |
 | **Custom** | Write your own system prompt. Full control over how the LLM processes your voice. |
 
-You can create unlimited custom profiles and switch between them instantly from the tray menu.
+Switch profiles instantly from the tray menu. Create as many custom profiles as you need.
+
+### 🎙 System-Wide Dictation
+
+- **Works in every app** — browser, VS Code, terminal, Slack, IntelliJ, Cursor. Just talk, Voxa handles the `Cmd+V`.
+- **VAD-Reactive Animation** — the recording pill responds in real time to your microphone level.
+- **Focus Preservation** — returns focus to the exact app you were in after injection, including Electron and JVM targets.
+- **Ultra-Compact Floating Pill** — a minimal interface that lives at the edge of your screen, never in the way.
+- **Configurable Recording Limit** — set auto-stop from 30s to 600s (Settings → General). Useful for long-form prompts.
+- **Launch at Login** — start Voxa automatically when you log in (Settings → General → Behavior).
 
 ### 📋 Transcript History
 
-Every dictation is stored locally in SQLite. From the history panel you can:
+Every dictation is stored locally in SQLite:
 - Review both the **raw transcription** and the **LLM-refined version** side by side.
-- **Edit** any transcript after the fact to correct errors.
+- **Edit** any transcript after the fact.
 - **Delete** individual entries or clear the full history.
 
 ### 📖 Custom Dictionary
 
-When you correct a transcript, Voxa automatically extracts the new words and adds them to your personal dictionary. This improves Whisper's recognition for domain-specific terms, names, and jargon over time. You can also add or remove words manually from Settings.
+Voxa learns from your corrections. When you fix a transcript, it automatically extracts new words and adds them to your personal dictionary — improving Whisper's recognition for domain terms, names, and jargon over time. Add or remove words manually from Settings at any time.
 
-## 🛠 Tech Stack
-
-- **Core**: [Tauri v2](https://tauri.app/) (Rust)
-- **Frontend**: [React](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/)
-- **Styling**: Vanilla CSS (High-Performance Glassmorphism)
-- **Engines**: 
-  - `whisper-rs` (Local STT via `whisper.cpp`)
-  - `llama-server` HTTP API (Intelligent Post-processing via `llama.cpp`)
+---
 
 ## 📦 Download
 
@@ -82,38 +91,46 @@ When you correct a transcript, Voxa automatically extracts the new words and add
 
 1. Download `Voxa_1.6.0_aarch64.dmg` from the link above.
 2. Open the `.dmg` and drag **Voxa** to your **Applications** folder.
-3. **Important — before opening Voxa**, run this command in Terminal to remove the macOS quarantine flag:
+3. **Before opening Voxa**, run this in Terminal to remove the macOS quarantine flag:
    ```bash
    xattr -cr /Applications/Voxa.app
    ```
 4. Open Voxa. On first launch, macOS will ask for **Accessibility** permission — click **Open System Settings** and enable the toggle for Voxa.
-5. Voxa will automatically download the AI models (~1 GB) on first run.
-6. Use the default shortcuts to start dictating: **Alt+Space** (push-to-talk) or **F5** (hands-free toggle).
+5. Voxa automatically downloads the AI models (~1 GB) on first run.
+6. Start dictating: **Alt+Space** (push-to-talk) or **F5** (hands-free toggle).
 
 ### ⚠️ Why the extra step?
 
-Voxa is **not code-signed or notarized** with Apple because the project doesn't have an Apple Developer account ($99/year). This means:
+Voxa is **not code-signed or notarized** because the project doesn't have an Apple Developer account ($99/year). This means:
 
-- macOS Gatekeeper will show **"Voxa.app is damaged and can't be opened"** — this is a false positive. The app is not damaged.
-- The `xattr -cr` command removes the quarantine attribute that macOS adds to files downloaded from the internet.
+- macOS Gatekeeper will show **"Voxa.app is damaged and can't be opened"** — this is a false positive.
+- The `xattr -cr` command removes the quarantine attribute added by macOS to downloaded files.
 - You also need to manually grant **Accessibility** permission in System Settings → Privacy & Security → Accessibility.
 
-**Voxa is 100% open source.** You can audit every line of code in this repository, and you can build it yourself from source (see [Development](#-development) below). No data ever leaves your machine.
+**Voxa is 100% open source** — you can audit every line of code and build it from source. No data ever leaves your machine.
 
-> If you're a developer with an Apple Developer account and want to help sign and notarize Voxa, see [docs/code-signing.md](docs/code-signing.md).
+> If you have an Apple Developer account and want to help sign and notarize Voxa, see [docs/code-signing.md](docs/code-signing.md).
 
 ### macOS Permissions
 
-Voxa requires these permissions to function:
-
 | Permission | Why | How to grant |
 |-----------|-----|-------------|
-| **Accessibility** | Capture global keyboard shortcuts and inject text into other apps via `Cmd+V` simulation | System Settings → Privacy & Security → Accessibility → enable Voxa |
+| **Accessibility** | Capture global shortcuts and inject text into other apps via `Cmd+V` simulation | System Settings → Privacy & Security → Accessibility → enable Voxa |
 | **Microphone** | Record audio for voice dictation | Granted automatically on first recording attempt |
 
 If shortcuts stop working after an update, remove Voxa from the Accessibility list and re-add it — macOS invalidates the permission when the binary hash changes.
 
-> **Note:** Voxa runs entirely on-device. No API keys, no cloud, no subscriptions. Your voice never leaves your machine.
+---
+
+## 🛠 Tech Stack
+
+- **Core**: [Tauri v2](https://tauri.app/) (Rust)
+- **Frontend**: [React](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/)
+- **Styling**: Vanilla CSS (High-Performance Glassmorphism)
+- **Speech-to-Text**: `whisper-rs` via `whisper.cpp` — local, GPU-accelerated on Apple Silicon
+- **LLM**: `llama-server` HTTP API via `llama.cpp` — Qwen2.5 running fully on-device
+
+---
 
 ## 🚀 Development
 
@@ -127,29 +144,24 @@ If shortcuts stop working after an update, remove Voxa from the Accessibility li
 
 ### Running locally
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/lufermalgo/voxa.git
-   cd voxa
-   ```
+```bash
+git clone https://github.com/lufermalgo/voxa.git
+cd voxa
+pnpm install
+pnpm tauri dev
+```
 
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
+### Building a release
 
-3. Run in development:
-   ```bash
-   pnpm tauri dev
-   ```
+```bash
+pnpm tauri build --target aarch64-apple-darwin
+```
 
-4. Build a release `.dmg`:
-   ```bash
-   pnpm tauri build --target aarch64-apple-darwin
-   ```
-   The `.dmg` will be in `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
+The `.dmg` will be in `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
 
-> **Note:** When running from `pnpm tauri dev`, shortcuts work because the process inherits Terminal's Accessibility permission. For the built `.app`, you need to grant Accessibility manually (see [Installation](#installation)).
+> When running from `pnpm tauri dev`, shortcuts work because the process inherits Terminal's Accessibility permission. For the built `.app`, grant Accessibility manually (see [Installation](#installation)).
+
+---
 
 ## 🏗 Architecture
 
@@ -164,20 +176,39 @@ Voxa uses a decoupled **MPSC channel** to bridge the audio recording stream with
 
 Key design decisions:
 - **No Dock icon** — runs as `NSApplicationActivationPolicyAccessory` (Alfred/Raycast model). Never steals focus.
-- **Focus preservation** — stores the frontmost app PID via `NSWorkspace` before any Voxa window appears, then restores it via PID-based `activateWithOptions`. Works reliably with Electron and JVM targets (VS Code, IntelliJ).
+- **Focus preservation** — stores the frontmost app PID via `NSWorkspace`, then restores it via PID-based `activateWithOptions`. Works reliably with Electron and JVM targets.
 - **Native event tap** — uses `CGEventTap` at session level instead of Tauri's global shortcut plugin, which fails for system-reserved keys like `Alt+Space` on macOS.
-- **LLM inference** — `llama-server` runs as a subprocess on a local port. No GPU required; automatically selects Qwen2.5-3B (Apple Silicon) or Qwen2.5-1.5B (Intel) based on hardware.
+- **LLM inference** — `llama-server` runs as a subprocess on a local port. Automatically selects Qwen2.5-3B (Apple Silicon) or Qwen2.5-1.5B (Intel) based on hardware.
 - **Audio silence detection** — uses peak amplitude instead of RMS to avoid false negatives on low-volume speech.
+
+---
 
 ## 📚 Technical Documentation
 
-For deep dives into specific technical implementations, see:
 - [macOS Native Event Tap & Shortcut Architecture](docs/architecture/shortcuts-native-tap.md)
 - [VAD-Reactive Animation Architecture](docs/architecture/vad-animation.md)
 - [Long-Dictation Strategy for the Code Profile](docs/architecture/long-dictations-code-profile.md)
 
 ---
 
+## 🤝 Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Looking for a place to start? Check the [open issues](https://github.com/lufermalgo/voxa/issues) — issues labeled `good first issue` are a great entry point.
+
+If you have an Apple Developer account and want to help with code signing and notarization, see [docs/code-signing.md](docs/code-signing.md) — this would remove the `xattr` installation friction for all users.
+
+---
+
+## 💎 Philosophy
+
+Voxa is built around a **"Silent Conductor"** philosophy: it lives at the edge of your screen, ready to translate your thoughts into text in any application, without friction, without noise.
+
+Inspired by tools like *Wispr Flow*, built for people who want the same power without the cloud dependency or the monthly bill.
+
+---
+
 <div align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/lufermalgo">lufermalgo</a></sub>
+  <sub>Built with ❤️ by <a href="https://github.com/lufermalgo">lufermalgo</a> · <a href="https://github.com/lufermalgo/voxa/releases">Releases</a> · <a href="https://github.com/lufermalgo/voxa/issues">Issues</a> · <a href="CONTRIBUTING.md">Contributing</a></sub>
 </div>
