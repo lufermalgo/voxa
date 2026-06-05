@@ -103,7 +103,7 @@ Once signed and notarized:
 Users can verify the `.dmg` integrity using the SHA-256 hash shown on the GitHub release page:
 
 ```bash
-shasum -a 256 ~/Downloads/Voxa_1.5.1_aarch64.dmg
+shasum -a 256 ~/Downloads/Voxa_1.6.0_aarch64.dmg
 ```
 
 Compare the output with the digest listed on the release.
