@@ -48,14 +48,11 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 
 | Field | Value |
 |-------|-------|
-| Branch | `feature/growth-readme-seo` |
-| Status | `in-progress` |
-| PR | pending |
+| Branch | `main` (idle) |
+| Status | `idle` |
+| PR | #105 MERGED (`docs: rewrite philosophy section`) |
 | Version | **1.6.0** — tag `v1.6.0` pushed, GitHub Release LIVE |
 | Release | https://github.com/lufermalgo/voxa/releases/tag/v1.6.0 — `Voxa_1.6.0_aarch64.dmg` (16 MB) |
-
-### Files being touched
-- `README.md` — SEO + growth optimization (comparison table, reordered sections, new title, optimized tagline, star badge, contributing CTA)
 
 > v1.6.0 version bump (PR #102) ships #97–#100 since v1.5.1 tag. DMG built locally +
 > verified (CFBundleShortVersionString=1.6.0). NOT yet tagged/released on GitHub —
