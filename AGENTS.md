@@ -17,6 +17,99 @@ every section reflects a real pattern learned from building this project.
 
 ---
 
+## 0. Project Architecture & Code Map
+
+Read this section at the start of every session. It gives you enough context to work
+on any part of the codebase without needing to explore files blindly.
+
+### Data flow — the full pipeline
+
+```
+Hotkey press (CGEventTap)
+  → event_tap.rs          — captures global keyboard events at session level
+  → pipeline.rs           — orchestrates the full dictation lifecycle via MPSC channel
+  → audio.rs              — records audio (cpal), applies VAD, resamples to 16 kHz
+  → whisper_inference.rs  — local STT via whisper.cpp (GPU-accelerated on Apple Silicon)
+  → llama_inference.rs    — local LLM refinement via llama-server HTTP API
+  → commands.rs           — injects result into clipboard + triggers Cmd+V paste
+  → target app            — text appears at cursor
+```
+
+The pipeline uses a decoupled **MPSC channel** (`DictationEvent`) so the UI stays
+responsive during transcription. The LLM runs as a `llama-server` subprocess on a
+local port — managed by `proc.rs` to prevent orphaned processes.
+
+### Key design decisions (know these before writing code)
+
+- **No Dock icon** — runs as `NSApplicationActivationPolicyAccessory`. Never steals focus.
+- **Native event tap** — `CGEventTap` at session level, not Tauri's global shortcut plugin
+  (which fails for system-reserved keys like `Alt+Space`).
+- **Focus preservation** — stores the frontmost app PID via `NSWorkspace` before any Voxa
+  window appears, then restores it by PID. Works with Electron and JVM targets.
+- **LLM subprocess** — `llama-server` is spawned as a child process. Orphan detection and
+  reaping is handled in `proc.rs` — never do a blanket `killall llama-server`.
+- **Audio silence detection** — uses peak amplitude, not RMS, to avoid false negatives on
+  low-volume speech.
+- **Model selection** — auto-selects Qwen2.5-3B (Apple Silicon) or Qwen2.5-1.5B (Intel).
+
+---
+
+### Project folder structure
+
+```
+voxa/
+├── src/                          # Frontend — React + TypeScript (Vite)
+│   ├── components/
+│   │   ├── RecorderPill.tsx      # Floating dictation pill (the main UI element)
+│   │   ├── SettingsPanel.tsx     # Full settings screen
+│   │   ├── ProfilePicker.tsx     # Profile selection dropdown
+│   │   ├── ProfilePill.tsx       # Active profile indicator
+│   │   └── TrayMenu.tsx          # System tray menu
+│   ├── hooks/
+│   │   ├── useAudioLevel.ts      # Mic level → pill animation
+│   │   ├── useProfiles.ts        # Profile CRUD and active profile state
+│   │   ├── useRecordingDuration.ts # Recording timer
+│   │   ├── useSettings.ts        # App settings read/write
+│   │   └── useTranscription.ts   # Transcription state and history
+│   ├── App.tsx                   # Root component and routing
+│   └── i18n.ts                   # Internationalisation (en/es)
+│
+├── src-tauri/                    # Backend — Rust (Tauri v2)
+│   └── src/
+│       ├── lib.rs                # App entry point, Tauri setup, state registration
+│       ├── pipeline.rs           # Dictation lifecycle orchestrator (MPSC channel hub)
+│       ├── audio.rs              # Audio capture (cpal), VAD integration, resampling
+│       ├── whisper_inference.rs  # Whisper STT engine (whisper-rs, persistent state)
+│       ├── llama_inference.rs    # LLM refinement via llama-server HTTP API
+│       ├── models.rs             # Model download, verification, path resolution
+│       ├── db.rs                 # SQLite — transcripts, settings, profiles, dictionary
+│       ├── commands.rs           # All #[tauri::command] handlers (except shortcuts)
+│       ├── shortcuts.rs          # Shortcut registration + NATIVE_SHORTCUTS global state
+│       ├── event_tap.rs          # CGEventTap — native macOS global keyboard capture
+│       ├── tray.rs               # System tray icon and menu
+│       ├── vad.rs                # Silero VAD engine (ONNX/ort) — speech detection
+│       ├── proc.rs               # llama-server lifecycle — spawn, reap, orphan detection
+│       ├── formatting.rs         # LLM formatting block builder (markdown/plain, i18n hints)
+│       ├── window_utils.rs       # Pill position calculation (centered, above Dock)
+│       └── main.rs               # Binary entry point
+│
+├── .kiro/
+│   ├── specs/                    # Feature specs (requirements + design + tasks)
+│   └── hooks/                    # Agent automation hooks
+│
+├── _tools/
+│   └── SESSION_STATUS.md         # Active session state — read this first every session
+│
+├── docs/
+│   ├── architecture/             # Deep-dive technical docs for specific subsystems
+│   └── brand/                    # Brand identity and design tokens
+│
+├── AGENTS.md                     # This file — agent rules and project context
+└── README.md                     # User-facing documentation
+```
+
+---
+
 ## 1. Token Efficiency — The Fundamental Principle
 
 - **Read before writing**: inspect existing code before modifying. Never write blind.

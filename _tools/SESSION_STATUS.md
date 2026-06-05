@@ -50,7 +50,7 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 |-------|-------|
 | Branch | `main` (idle) |
 | Status | `idle` |
-| PR | #105 MERGED (`docs: rewrite philosophy section`) |
+| PR | #106 MERGED (`docs: consolidate AGENTS.md as single source of truth for Kiro`) |
 | Version | **1.6.0** — tag `v1.6.0` pushed, GitHub Release LIVE |
 | Release | https://github.com/lufermalgo/voxa/releases/tag/v1.6.0 — `Voxa_1.6.0_aarch64.dmg` (16 MB) |
 
