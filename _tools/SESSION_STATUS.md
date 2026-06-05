@@ -12,7 +12,7 @@ order: #92 → #93 → #94 → #95 (do #95 last, it depends on the others).
 |-------|-------|-------------|----------|--------|
 | [#92](https://github.com/lufermalgo/voxa/issues/92) | deterministic llama-server lifecycle + reap orphans (~7.6GB) | `.kiro/specs/llama-server-lifecycle/` | B1 + B8 | ✅ CLOSED — PR #97 merged |
 | [#93](https://github.com/lufermalgo/voxa/issues/93) | cursor-context AX read off the input critical path | `.kiro/specs/cursor-context-async/` | B3 | ✅ CLOSED — PR #98 merged |
-| [#94](https://github.com/lufermalgo/voxa/issues/94) | reduce finalization latency (device re-enum, resampler, paste sleep) | `.kiro/specs/audio-finalization-latency/` | B5+B6+B4 | open |
+| [#94](https://github.com/lufermalgo/voxa/issues/94) | reduce finalization latency (device re-enum, resampler, paste sleep) | `.kiro/specs/audio-finalization-latency/` | B5+B6+B4 | ✅ CLOSED — PR #99 merged |
 | [#95](https://github.com/lufermalgo/voxa/issues/95) | streaming/overlapped transcription (spike-first, GO/NO-GO) | `.kiro/specs/streaming-transcription/` | B2 + B7 | open, **do last** (depends on #92–#94) |
 
 ### How to start each session (recipe)
