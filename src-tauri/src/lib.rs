@@ -29,7 +29,7 @@ use crate::pipeline::{
 };
 use crate::shortcuts::{NativeShortcuts, NATIVE_SHORTCUTS};
 
-use std::sync::{atomic::AtomicBool, Arc, Mutex, mpsc};
+use std::sync::{atomic::{AtomicBool, AtomicU64}, Arc, Mutex, mpsc};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -149,6 +149,7 @@ pub fn run() {
             app.manage(CursorContext {
                 pre_text:  Mutex::new(String::new()),
                 post_text: Mutex::new(String::new()),
+                generation: AtomicU64::new(0),
             });
 
             // Spawn the dedicated shutdown-signal waiter (Requirement 3.2). It blocks in
