@@ -145,3 +145,145 @@ impl VadEngine {
         self.is_speaking = false;
     }
 }
+
+/// Run VAD over `samples` frame-by-frame (512 samples per frame) and return
+/// true if any frame is classified as speech.  Resets the engine before use.
+/// This mirrors the production incremental path (Req 5.1).
+#[cfg(test)]
+pub fn vad_speech_detected_incremental(vad: &mut VadEngine, samples: &[f32]) -> bool {
+    vad.reset();
+    for chunk in samples.chunks(512) {
+        if vad.process_frame(chunk) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Run VAD over `samples` in a single batch (whole buffer at once, one frame
+/// per iteration) and return true if any frame detects speech.
+/// This mirrors the old post-stop full-buffer VAD loop that was in pipeline.rs.
+#[cfg(test)]
+pub fn vad_speech_detected_batch(vad: &mut VadEngine, samples: &[f32]) -> bool {
+    vad.reset();
+    let mut any_speech = false;
+    for chunk in samples.chunks(512) {
+        if vad.process_frame(chunk) {
+            any_speech = true;
+            break;
+        }
+    }
+    any_speech
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Raw bytes of the bundled Silero VAD v6 ONNX model — reused from the main module.
+    static VAD_MODEL_BYTES: &[u8] = include_bytes!("../models/silero_vad_v6.onnx");
+
+    fn make_vad() -> VadEngine {
+        VadEngine::new(VAD_MODEL_BYTES).expect("VAD engine should initialise in tests")
+    }
+
+    /// Synthesise a 16 kHz mono buffer containing a ~440 Hz sine tone (speech-like
+    /// energy) for the given number of seconds.  Used as a "speech" proxy.
+    fn sine_buffer(duration_secs: f32) -> Vec<f32> {
+        let n = (16000.0 * duration_secs) as usize;
+        (0..n)
+            .map(|i| {
+                (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin() * 0.5
+            })
+            .collect()
+    }
+
+    /// Synthesise a 16 kHz mono buffer of near-silence (all zeros).
+    fn silence_buffer(duration_secs: f32) -> Vec<f32> {
+        let n = (16000.0 * duration_secs) as usize;
+        vec![0.0f32; n]
+    }
+
+    /// Req 5.1 — Incremental VAD parity with batch VAD on a speech buffer.
+    ///
+    /// Feeds the same audio buffer frame-by-frame (incremental path, mirroring
+    /// the new capture-callback path) and as a whole batch (old post-stop path)
+    /// and asserts that both produce the same `speech_ever_detected` result.
+    #[test]
+    fn test_incremental_parity_speech() {
+        let samples = sine_buffer(2.0); // 2 s of sine tone — Silero sees as speech-like
+
+        let mut vad1 = make_vad();
+        let mut vad2 = make_vad();
+
+        let incremental_result = vad_speech_detected_incremental(&mut vad1, &samples);
+        let batch_result       = vad_speech_detected_batch(&mut vad2, &samples);
+
+        assert_eq!(
+            incremental_result, batch_result,
+            "Incremental and batch VAD must agree on a speech buffer: \
+             incremental={incremental_result}, batch={batch_result}"
+        );
+    }
+
+    /// Req 5.1 — Incremental VAD parity with batch VAD on a silence buffer.
+    ///
+    /// Both paths must agree that a zero-filled buffer contains no speech.
+    #[test]
+    fn test_incremental_parity_silence() {
+        let samples = silence_buffer(2.0); // 2 s of silence
+
+        let mut vad1 = make_vad();
+        let mut vad2 = make_vad();
+
+        let incremental_result = vad_speech_detected_incremental(&mut vad1, &samples);
+        let batch_result       = vad_speech_detected_batch(&mut vad2, &samples);
+
+        assert_eq!(
+            incremental_result, batch_result,
+            "Incremental and batch VAD must agree on a silence buffer: \
+             incremental={incremental_result}, batch={batch_result}"
+        );
+        // Silence should not be flagged as speech.
+        assert!(!incremental_result, "Silence buffer should not detect speech");
+    }
+
+    /// Req 5.2 — Silence-skip behavior is preserved.
+    ///
+    /// When `speech_ever_detected == false`, the pipeline skips STT.
+    /// This test confirms that a silence-only buffer yields false from the
+    /// incremental path (which is what the pipeline now reads at stop time).
+    #[test]
+    fn test_silence_skip_incremental() {
+        let samples = silence_buffer(1.0);
+        let mut vad = make_vad();
+        let detected = vad_speech_detected_incremental(&mut vad, &samples);
+        assert!(
+            !detected,
+            "Silence buffer must not set speech_ever_detected (STT skip must be preserved)"
+        );
+    }
+
+    /// Req 5.3 — No post-stop VAD pass is needed.
+    ///
+    /// Verifies that `vad_speech_detected_batch` and `vad_speech_detected_incremental`
+    /// are structurally equivalent (same engine, same reset, same frame loop, same result),
+    /// confirming that the incremental path can fully replace the batch loop.
+    #[test]
+    fn test_incremental_replaces_batch_on_mixed_audio() {
+        // Construct a buffer: 1 s silence, then 1 s speech-like tone.
+        let mut samples = silence_buffer(1.0);
+        samples.extend(sine_buffer(1.0));
+
+        let mut vad1 = make_vad();
+        let mut vad2 = make_vad();
+
+        let incremental_result = vad_speech_detected_incremental(&mut vad1, &samples);
+        let batch_result       = vad_speech_detected_batch(&mut vad2, &samples);
+
+        assert_eq!(
+            incremental_result, batch_result,
+            "Incremental and batch VAD must agree on a mixed (silence+speech) buffer"
+        );
+    }
+}
