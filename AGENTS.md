@@ -362,11 +362,6 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 | `.kiro/hooks/` | Agent automation hooks | Created and maintained by Kiro |
 | `_tools/` | Session state and tooling notes | Shared — `SESSION_STATUS.md` is the session memory file |
 
-**Deprecated and removed:**
-- `.aind/` — was Claude Code's state directory. No longer used.
-- `.claude/` — was Claude Code's config directory. No longer used.
-- `.kiro/status.md` — was the multi-agent coordination file. Replaced by `_tools/SESSION_STATUS.md`.
-
 ---
 
 ## 14. Anti-Patterns
