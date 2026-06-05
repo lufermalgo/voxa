@@ -205,7 +205,7 @@ If you have an Apple Developer account and want to help with code signing and no
 
 Voxa is built around a **"Silent Conductor"** philosophy: it lives at the edge of your screen, ready to translate your thoughts into text in any application, without friction, without noise.
 
-Inspired by tools like *Wispr Flow*, built for people who want the same power without the cloud dependency or the monthly bill.
+It comes from an AI-first mindset — a constant curiosity about how AI fits better into daily work, and a conviction that the best AI tools are the ones you actually own. Local models are not a workaround. They are the right architecture: fast, private, and yours forever.
 
 ---
 
