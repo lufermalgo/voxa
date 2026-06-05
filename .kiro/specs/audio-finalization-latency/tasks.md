@@ -8,7 +8,7 @@ bounded readiness poll (B4). Files touched are Claude-owned — coordinate per A
 
 ## Tasks
 
-- [ ] 1. Retain audio config (B5)
+- [x] 1. Retain audio config (B5)
   - 1.1 Add `sample_rate: u32` and `channels: u16` to `AudioState`; populate in
     `setup_stream`.
     - _Requirements: 1.1_
@@ -18,7 +18,7 @@ bounded readiness poll (B4). Files touched are Claude-owned — coordinate per A
     → same result as before).
     - _Requirements: 1.3_
 
-- [ ] 2. Speech-appropriate resampler (B6)
+- [x] 2. Speech-appropriate resampler (B6)
   - 2.1 Lower `sinc_len` / `oversampling_factor` in `resample_to_16k` to speech-grade
     values; keep the 16 kHz short-circuit.
     - _Requirements: 3.1, 3.4_
@@ -28,7 +28,7 @@ bounded readiness poll (B4). Files touched are Claude-owned — coordinate per A
   - 2.3 Measure resample CPU time old vs new on the same buffer; confirm speed-up.
     - _Requirements: 3.3_
 
-- [ ] 3. Bounded paste-readiness poll (B4)
+- [x] 3. Bounded paste-readiness poll (B4)
   - 3.1 Add a cheap `frontmost_pid()` helper in `event_tap.rs`.
     - _Requirements: 2.1_
   - 3.2 Replace the fixed 80 ms sleep in `pipeline.rs` with a poll: break when target app
@@ -38,7 +38,7 @@ bounded readiness poll (B4). Files touched are Claude-owned — coordinate per A
     and lower perceived latency.
     - _Requirements: 2.4_
 
-- [ ] 4. Verify & document
+- [x] 4. Verify & document
   - `cargo check` clean for each change; document before/after timings in the PR(s).
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 3.4_
 
