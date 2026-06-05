@@ -747,8 +747,7 @@ pub unsafe extern "C" fn native_tap_callback(
                         .load(Ordering::SeqCst);
                     if !is_recording {
                         matched = true;
-                        let (pre, post) = get_cursor_context();
-                        event_to_send = Some(DictationEvent::StartRecording { pre_text: pre, post_text: post });
+                        event_to_send = Some(DictationEvent::StartRecording);
                     } else {
                         return std::ptr::null_mut();
                     }
@@ -764,8 +763,7 @@ pub unsafe extern "C" fn native_tap_callback(
                     event_to_send = if is_recording {
                         Some(DictationEvent::StopRecording)
                     } else {
-                        let (pre, post) = get_cursor_context();
-                        Some(DictationEvent::StartRecording { pre_text: pre, post_text: post })
+                        Some(DictationEvent::StartRecording)
                     };
                 } else if current_accel == shortcuts.paste {
                     matched = true;
@@ -806,7 +804,7 @@ pub unsafe extern "C" fn native_tap_callback(
                     if let Some(ev) = event_to_send {
                         if let Ok(tx) = app_handle.state::<DictationSender>().0.lock() {
                             match ev {
-                                DictationEvent::StartRecording { .. } => {
+                                DictationEvent::StartRecording => {
                                     app_handle
                                         .state::<RecordingState>()
                                         .0

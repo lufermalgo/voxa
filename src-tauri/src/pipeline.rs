@@ -1,6 +1,6 @@
 // Dictation pipeline — state types, pipeline loop, and cancellation handle.
 
-use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, AtomicU64, Ordering}};
 use tauri::{Manager, Emitter};
 use crate::audio::{self, AudioEngine};
 use crate::db::{self, DbState, SettingsCache};
@@ -14,7 +14,10 @@ use crate::models;
 
 #[derive(Debug, Clone)]
 pub enum DictationEvent {
-    StartRecording { pre_text: String, post_text: String },
+    /// Lightweight start signal. The cursor-context AX read is performed
+    /// asynchronously by the StartRecording handler (off the event-tap thread),
+    /// so this variant intentionally carries no payload.
+    StartRecording,
     StopRecording,
     CancelRecording,
 }
@@ -46,9 +49,39 @@ pub struct PipelineHandle {
 }
 
 /// Cursor context captured at recording start — passed to LLM at refinement time.
+///
+/// The text is read from the focused app via the Accessibility API on a short-lived
+/// background thread (off the event-tap input path). A monotonic `generation` counter
+/// guards against a slow read from a previous dictation overwriting a newer one:
+/// StartRecording bumps the generation, and an async read only stores its result if the
+/// generation it captured at spawn time still matches.
 pub struct CursorContext {
     pub pre_text:  Mutex<String>,
     pub post_text: Mutex<String>,
+    pub generation: AtomicU64,
+}
+
+impl CursorContext {
+    /// Begin a new dictation: bump the generation and clear any previous context.
+    /// Returns the new generation id for the async reader to capture.
+    pub fn begin(&self) -> u64 {
+        let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Ok(mut pre) = self.pre_text.lock() { pre.clear(); }
+        if let Ok(mut post) = self.post_text.lock() { post.clear(); }
+        gen
+    }
+
+    /// Store an async cursor-context read, but only if it still belongs to the current
+    /// dictation (its captured generation matches). A stale read (older generation) is
+    /// discarded. Returns `true` if the value was stored.
+    pub fn store_if_current(&self, gen: u64, pre: String, post: String) -> bool {
+        if self.generation.load(Ordering::SeqCst) != gen {
+            return false;
+        }
+        if let Ok(mut p) = self.pre_text.lock() { *p = pre; }
+        if let Ok(mut p) = self.post_text.lock() { *p = post; }
+        true
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -269,12 +302,27 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
             }
 
             match event {
-                DictationEvent::StartRecording { pre_text, post_text } => {
-                    // Store cursor context so StopRecording can pass it to the LLM
-                    {
+                DictationEvent::StartRecording => {
+                    // Bump generation and clear any previous context so a stale
+                    // async read from a prior dictation cannot overwrite us.
+                    let gen = {
                         let ctx = app.state::<CursorContext>();
-                        *ctx.pre_text.lock().unwrap()  = pre_text;
-                        *ctx.post_text.lock().unwrap() = post_text;
+                        ctx.begin()
+                    };
+
+                    // Spawn a short-lived thread to perform the AX cursor-context
+                    // read off the input-critical path. The thread captures the
+                    // generation id and only stores its result if the generation
+                    // still matches (i.e. no newer dictation has started).
+                    {
+                        let ctx_app = app.clone();
+                        std::thread::spawn(move || {
+                            let (pre, post) = crate::event_tap::get_cursor_context();
+                            let ctx = ctx_app.state::<CursorContext>();
+                            if !ctx.store_if_current(gen, pre, post) {
+                                log::debug!("Cursor context read discarded (stale generation)");
+                            }
+                        });
                     }
                     if let Some(audio_engine) = app.try_state::<AudioEngine>() {
                         // Reset VAD state for a clean new session
@@ -502,7 +550,10 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
                     let _ = app.emit("pipeline-text-raw", &raw_text);
                     let _ = app.emit("pipeline-status", "refining");
 
-                    // Read cursor context captured at StartRecording
+                    // Read cursor context captured at StartRecording.
+                    // Non-blocking: we take whatever the async reader has stored so far.
+                    // For very short dictations the context may still be empty — that is
+                    // acceptable (Req 2.2, 2.3). We never join/wait on the reader thread.
                     let (cursor_pre, cursor_post) = {
                         let ctx = app.state::<CursorContext>();
                         let pre  = ctx.pre_text.lock().unwrap().clone();
@@ -702,4 +753,75 @@ pub fn start_pipeline(app: tauri::AppHandle, rx: mpsc::Receiver<DictationEvent>)
             }
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests — generation guard (Requirements 4.1, 4.2)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU64;
+
+    fn new_cursor_context() -> CursorContext {
+        CursorContext {
+            pre_text: Mutex::new(String::new()),
+            post_text: Mutex::new(String::new()),
+            generation: AtomicU64::new(0),
+        }
+    }
+
+    #[test]
+    fn store_if_current_accepts_matching_generation() {
+        let ctx = new_cursor_context();
+
+        let gen = ctx.begin();
+        let stored = ctx.store_if_current(gen, "hello".to_string(), "world".to_string());
+
+        assert!(stored, "store_if_current should return true for matching generation");
+        assert_eq!(*ctx.pre_text.lock().unwrap(), "hello");
+        assert_eq!(*ctx.post_text.lock().unwrap(), "world");
+    }
+
+    #[test]
+    fn store_if_current_rejects_stale_generation() {
+        let ctx = new_cursor_context();
+
+        let old_gen = ctx.begin();
+        // Start a new dictation — bumps generation and clears context.
+        let _new_gen = ctx.begin();
+
+        let stored = ctx.store_if_current(old_gen, "stale".to_string(), "data".to_string());
+
+        assert!(!stored, "store_if_current should return false for stale generation");
+        // Context should remain empty (cleared by the second begin()).
+        assert_eq!(*ctx.pre_text.lock().unwrap(), "");
+        assert_eq!(*ctx.post_text.lock().unwrap(), "");
+    }
+
+    #[test]
+    fn begin_clears_previous_context() {
+        let ctx = new_cursor_context();
+
+        let gen = ctx.begin();
+        ctx.store_if_current(gen, "pre".to_string(), "post".to_string());
+
+        // A new begin() should clear the stored context.
+        let _new_gen = ctx.begin();
+        assert_eq!(*ctx.pre_text.lock().unwrap(), "");
+        assert_eq!(*ctx.post_text.lock().unwrap(), "");
+    }
+
+    #[test]
+    fn begin_returns_monotonically_increasing_generations() {
+        let ctx = new_cursor_context();
+
+        let g1 = ctx.begin();
+        let g2 = ctx.begin();
+        let g3 = ctx.begin();
+
+        assert!(g2 > g1);
+        assert!(g3 > g2);
+    }
 }

@@ -74,8 +74,9 @@ pub fn apply_all_shortcuts(app_handle: tauri::AppHandle) -> Result<(), String> {
                             if event.state() == ShortcutState::Pressed {
                                 if let Ok(tx) = tx_state.0.lock() {
                                     app.state::<RecordingState>().0.store(true, std::sync::atomic::Ordering::SeqCst);
-                                    let (pre, post) = crate::event_tap::get_cursor_context();
-                                    let _ = tx.send(DictationEvent::StartRecording { pre_text: pre, post_text: post });
+                                    // AX cursor-context read is handled asynchronously by the
+                                    // StartRecording handler in pipeline.rs (off the shortcut thread).
+                                    let _ = tx.send(DictationEvent::StartRecording);
                                 }
                             } else if event.state() == ShortcutState::Released {
                                 if let Ok(tx) = tx_state.0.lock() {
@@ -97,8 +98,9 @@ pub fn apply_all_shortcuts(app_handle: tauri::AppHandle) -> Result<(), String> {
                                         let _ = tx.send(DictationEvent::StopRecording);
                                     } else {
                                         rs.0.store(true, std::sync::atomic::Ordering::SeqCst);
-                                        let (pre, post) = crate::event_tap::get_cursor_context();
-                                        let _ = tx.send(DictationEvent::StartRecording { pre_text: pre, post_text: post });
+                                        // AX cursor-context read is handled asynchronously by the
+                                        // StartRecording handler in pipeline.rs (off the shortcut thread).
+                                        let _ = tx.send(DictationEvent::StartRecording);
                                     }
                                 }
                             }
