@@ -26,11 +26,27 @@ Models: `/tmp/voxa-bench-small.bin`, `/tmp/voxa-voz-model`; benchmark-only Rust/
 `/tmp/voxa-bench-runtime/`. The first attempted run overlapped a build, was stopped,
 and is excluded (`results/preliminary/`). No running benchmark workers remain.
 
-Next: obtain 30 human German recordings and verified references (asked user for a
-local folder), rerun harness, then evaluate separate Voxa integration to measure
-final LLM text, actual stop-to-paste and full app memory. These remain unmeasured.
-Draft PR #110 targets upstream main from the `YerStev/voxa` fork (upstream read-only).
-Branch rebased on origin/main; next action requires real reference recordings and review.
+Continuation: user requested minimum-effort human recording setup and evaluating
+whether LLM processing is necessary. Prepared six prompts and a standalone native
+AVAudioRecorder window under `_tools/voz-benchmark/recording/`. Generated private
+folder: `_tools/voz-benchmark/data/Sprachtest/`; contains `Sprachtest.app`, `Aufnahmen/`,
+`manifest.json`, German instructions and prompts. App opened and idle UI verified.
+A first human take is already saved; do not interrupt the user or touch the app.
+No microphone recording was initiated by the agent. References marked unverified;
+desired semantic output kept separately. Native recording is lossless mono PCM.
+
+Packaging blocker: three preparation attempts encountered actor entry-point error,
+codesign Finder metadata, then missing Python os.listxattr. Swift entry fixed and
+compiled; metadata cleanup changed to native xattr. Last signing fix is unverified:
+user began recording, so no further rebuild/signing attempted. This was disclosed.
+Setup `--prepare-only` writes instructions without modifying the active application.
+Resume signing verification only after recording finishes, preserving all audio.
+
+Next: user reads the six displayed texts and says "fertig". Verify references and
+compare engines without LLM first, then compare optional LLM using identical input.
+Voxa already has `bypass_llm`; no product setting changed. Actual stop-to-paste and
+full app memory still require separate integration. Raw recordings remain gitignored.
+Draft PR #110 targets upstream main from `YerStev/voxa`; branch rebased on origin/main.
 
 ## Active backlog — 4 perf issues (specs + GitHub issues, one per session)
 

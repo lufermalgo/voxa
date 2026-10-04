@@ -32,8 +32,34 @@ manifest. References must be manually checked against the actual recording.
 ]
 ```
 
-Use 30 distinct human recordings, about 3, 10 and 30 seconds long, with a mix of
-quiet and ordinary background noise. Include names, numbers and technical terms.
+Start with the six guided human recordings below. If the initial result is
+promising, expand to 30 distinct recordings with varied lengths and environments.
+
+## Guided recording on this Mac
+
+Run `python3 recording/setup.py` once to build `data/Sprachtest/Sprachtest.app`.
+Open that app, click Start, read the displayed text, Stop, and Next. It requests
+microphone access only on the first Start click. Six prompts take about two or
+three minutes; no manual naming or saving is required. Repeating a take keeps the
+old audio file and updates the manifest to point to the new take. Closing or
+quitting stops and saves an active recording. The Mac's default input is used.
+
+Generated files: `data/Sprachtest/Aufnahmen/`, `manifest.json`, and German
+instructions. These are gitignored. Reference text initially has status
+`read_prompt_unverified`: audit deviations before interpreting WER. Desired
+semantic output is stored separately and must not replace the spoken reference.
+Numeric formatting and self-corrections need separate semantic evaluation.
+
+Use `python3 recording/setup.py --prepare-only` to write instructions without
+rebuilding or signing a running app. Never rebuild or re-sign during recording.
+If necessary, QuickTime Player's New Audio Recording is the fallback; save each
+take with the prompt ID in the same Aufnahme folder and let the assistant import it.
+
+The initial human comparison is **without LLM**. Voxa already supports this via
+`bypass_llm` (Settings: Disconnect transformation model). The benchmark's workers
+also run without LLM. A subsequent same-audio comparison should separately measure
+LLM time, desired corrections, and meaning preservation. The self-correction
+prompt explicitly tests Friday rather than Thursday and excluding Peter.
 
 ```sh
 python3 benchmark.py /absolute/path/manifest.json \

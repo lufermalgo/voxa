@@ -35,3 +35,32 @@ Tasks:
 - [ ] Compare 30 real German recordings with verified references.
 - [ ] Measure integrated LLM output, stop-to-paste timing and idle resume.
 - [x] Report measured results and limitations; update session state.
+
+## Human recording preparation (user-authorized continuation)
+
+Acceptance criteria before implementation:
+- Provide a local recording folder and a double-clickable native Mac recorder.
+- Six guided recordings, including names/numbers, technical terms, self-correction
+  and a longer dictation; no mandatory 30-file session.
+- Record only after an explicit Start click and microphone consent. Stop on window
+  close or quit. Show recording state and time clearly.
+- Save lossless mono audio, prompts, separate references and benchmark manifest
+  automatically. No overwrite of an existing take; no audio upload.
+- Allow choosing any completed take for replacement; store actual file paths.
+- Mark references unverified until checked; preserve spoken reference separately
+  from desired semantic output for self-correction.
+- Start the next comparison without LLM. A later same-audio LLM comparison judges
+  meaning preservation and required corrections, not just literal WER.
+- Verify build, folder/manifest setup and idle UI without activating the microphone.
+
+The benchmark itself remains a file-only driver. A separate opt-in recorder provides
+its input. QuickTime audio recording is the fallback, with the same file names.
+
+Preparation verification status: native Swift compiled and the idle recording UI
+was verified; microphone was not activated by the agent. A human recording has
+now been saved by the user. Three preparation runs encountered, in order, Swift
+actor entry-point isolation, codesign-rejected Finder metadata, and this Python
+runtime lacking os.listxattr. This packaging blocker was surfaced to the user.
+Do not rebuild, re-sign, quit, or manipulate the running recorder while the user
+is recording. Preserve takes and finish instructions using prepare-only mode.
+Validate the repaired signing step after the user finishes, before any future rebuild.
