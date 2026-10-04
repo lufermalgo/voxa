@@ -8,7 +8,13 @@ whisper-rs = { version = "=0.13.2", features = ["metal"] }
 regex = "1"
 log = "0.4"
 serde_json = "1"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+libc = "=0.2.184"
 
 [[bin]]
 name = "voxa-whisper-bench"
 path = "whisper.rs"
+
+[[bin]]
+name = "voxa-llm-bench"
+path = "llama.rs"

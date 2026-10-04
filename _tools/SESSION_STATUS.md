@@ -37,16 +37,37 @@ desired semantic output kept separately. Native recording is lossless mono PCM.
 
 Packaging blocker: three preparation attempts encountered actor entry-point error,
 codesign Finder metadata, then missing Python os.listxattr. Swift entry fixed and
-compiled; metadata cleanup changed to native xattr. Last signing fix is unverified:
-user began recording, so no further rebuild/signing attempted. This was disclosed.
+compiled; metadata cleanup changed to native xattr. Signing verification was deferred while the user recorded. After "fertig", the
+repaired setup succeeded, but Finder/iCloud metadata reappeared and strict
+verification rejected it again. Local recorder worked and all six takes are intact;
+this is a packaging issue, not an audio or benchmark failure.
 Setup `--prepare-only` writes instructions without modifying the active application.
 Resume signing verification only after recording finishes, preserving all audio.
 
-Next: user reads the six displayed texts and says "fertig". Verify references and
-compare engines without LLM first, then compare optional LLM using identical input.
-Voxa already has `bypass_llm`; no product setting changed. Actual stop-to-paste and
-full app memory still require separate integration. Raw recordings remain gitignored.
-Draft PR #110 targets upstream main from `YerStev/voxa`; branch rebased on origin/main.
+User has finished all six recordings. Human STT comparison completed: warm median
+Whisper 612 ms, Voz 246 ms; p95 2707 ms / 470 ms. Direct comparison includes a
+Voz currency-unit mismatch against the prompt. References are not manually audited.
+Same-input optional LLM comparison completed: 54 measured requests (3 rounds,
+Whisper, Voz, reference controls), one excluded warm-up. Production Qwen2.5-1.5B
+Q4_K_M, default Elegant profile + plain formatting rules, German, empty cursor
+context. Compatible llama.cpp b8670 used; b11387 rejected --mlock and is excluded.
+Median extra LLM time: Whisper 624 ms, Voz 732 ms. Local human report:
+`_tools/voz-benchmark/results/human/REPORT.md`. It recommends Voz as an optional
+engine and LLM off by default for ordinary dictation. Literal prompt deviation
+scores are NOT independently audited WER. Main ASR mistakes survive the LLM;
+self-correction and added formatting vary with input wording/punctuation.
+
+Verification: human benchmark and LLM runner completed; own server PID no longer
+exists, PID file removed, preexisting global log backed up/restored. Rust release
+build, cargo check (isolated package), four scoring tests pass. Raw audio, derived
+transcripts and detailed report are gitignored and local. No product settings changed.
+Model/runtime paths: `/tmp/voxa-bench-qwen.gguf`,
+`/tmp/voxa-bench-llama-compatible/llama-b8670/llama-server`.
+
+Next decision: whether to implement optional Voz integration. Actual stop-to-paste
+and full app memory still need integrated testing. Broader unscripted dictation is
+also a subsequent confidence check, not a prerequisite for an opt-in prototype.
+Draft PR #110 targets upstream main from `YerStev/voxa`; no merge performed.
 
 ## Active backlog — 4 perf issues (specs + GitHub issues, one per session)
 

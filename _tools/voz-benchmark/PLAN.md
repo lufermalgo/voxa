@@ -32,7 +32,8 @@ Tasks:
 - [x] Inspect production engine and SDK API; define acceptance criteria.
 - [x] Build workers and runner; verify scoring and audio validation.
 - [x] Prepare models; run a labeled preliminary corpus if real recordings absent.
-- [ ] Compare 30 real German recordings with verified references.
+- [x] Compare six guided human recordings; preserve unverified-reference limitations.
+- [x] Measure optional production LLM stage and inspect semantic changes.
 - [ ] Measure integrated LLM output, stop-to-paste timing and idle resume.
 - [x] Report measured results and limitations; update session state.
 
@@ -64,3 +65,29 @@ runtime lacking os.listxattr. This packaging blocker was surfaced to the user.
 Do not rebuild, re-sign, quit, or manipulate the running recorder while the user
 is recording. Preserve takes and finish instructions using prepare-only mode.
 Validate the repaired signing step after the user finishes, before any future rebuild.
+
+## Optional LLM comparison (user-authorized continuation after recording)
+
+Use the unchanged production LlamaEngine, existing Qwen2.5-1.5B Q4_K_M model,
+German language, default Elegant profile plus production plain formatting rules,
+no cursor context or custom vocabulary. Run separate from STT measurement to avoid
+accelerator contention. Reuse one loaded server, perform an untimed warm-up, and
+measure three paired repetitions of both engines' human transcripts. Include
+reference-text controls to distinguish LLM changes from upstream recognition errors.
+Record individual transformed text and wall-clock request time; judge preservation
+of names, numbers, negations, self-corrections and instructions. Do not use literal
+WER to penalize intentional paraphrasing. These are stage timings, not observed
+stop-to-paste. Downloads and server startup remain outside warm request timing.
+Server ownership must be confined to the benchmark's own child and PID file. Preserve
+any preexisting global llama log because production code writes to that fixed path.
+
+Human follow-up completed: six takes, three repetitions, 44 STT requests; warm
+median 612 ms Whisper / 246 ms Voz, p95 2707 / 470 ms. LLM follow-up completed:
+54 measured requests plus one excluded warm-up, production Qwen 1.5B / Elegant,
+llama.cpp b8670. Median additional time 624 ms Whisper / 732 ms Voz. Main ASR
+errors survive refinement; self-correction behavior depends on input punctuation.
+Latest b11387 rejects --mlock; its failed attempt is excluded. Owned server exited
+and PID file removed. Human report remains local at results/human/REPORT.md.
+Packaging after recording: setup/signing ran successfully, but Finder metadata
+reappeared and strict verification rejected it again. No effect on the saved six
+takes or the measurements; recorder distribution is not validated.

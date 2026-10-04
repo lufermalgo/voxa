@@ -79,7 +79,10 @@ class Worker:
         return result
 
     def transcribe(self, pcm):
-        self.process.stdin.write(json.dumps({"pcm": str(pcm)}) + "\n")
+        return self.request({"pcm": str(pcm)})
+
+    def request(self, payload):
+        self.process.stdin.write(json.dumps(payload) + "\n")
         self.process.stdin.flush()
         return self.receive()
 

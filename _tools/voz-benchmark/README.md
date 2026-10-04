@@ -100,3 +100,30 @@ Voz SDK license is source-available; see the upstream license before distributio
 Model downloads require network access. Audio and transcripts are handled locally
 by this harness. `data/`, `models/`, `results/` and build artifacts are gitignored;
 do not publish personal recordings in a PR.
+
+
+## Optional production LLM stage
+
+After the STT measurement completes, use `llm_comparison.py` with the STT JSONL,
+manifest, Qwen2.5-1.5B Q4_K_M model and a compatible llama-server (tested b8670).
+The current latest b11387 rejects the production `--mlock` option. This stage
+imports the production LlamaEngine, process helpers and formatting builder with
+minimal data-type adapters, without linking the application UI. Default Elegant
+instructions are read directly from db.rs, with German/plain formatting and no
+custom hints or cursor context. It measures three repetitions for the first warm
+transcript from each engine plus supplied reference-text controls. Downloads,
+server startup and an initial warm-up are outside request timing. A private PID
+file tracks the owned server; normal shutdown terminates and reaps it. A preexisting
+global production log is backed up and restored. Run this stage alone, not during
+STT measurement; compare meaning and editing effort rather than literal WER.
+
+```sh
+python3 llm_comparison.py results/human/runs.jsonl \
+  --manifest data/Sprachtest/manifest.json \
+  --model /absolute/path/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --server /absolute/path/llama-server \
+  --output /absolute/path/new-llm-results-directory
+```
+
+Human results and transcripts stay in gitignored results directories. Benchmarks
+are stage measurements; integrated stop-to-paste remains a separate validation.
