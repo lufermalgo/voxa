@@ -1,6 +1,35 @@
 # Session Status
 
-> Last updated: 2026-06-04
+> Last updated: 2026-10-04
+
+## Current task — Voz / Whisper benchmark (issue #109)
+
+| Field | Value |
+|---|---|
+| Current branch | `feature/issue-109-voz-whisper-benchmark` |
+| Status | `in-progress` |
+| Files being touched | `_tools/voz-benchmark/`, `_tools/SESSION_STATUS.md` |
+| Pending PR | draft being prepared |
+
+Isolated benchmark implemented; product code unchanged. Actual host: Apple M1 Pro,
+16 GB, macOS 26.6.2 (older M3 notes below are historical). Report:
+`_tools/voz-benchmark/RESULTS.md`. 30 synthetic samples, 3 repetitions, 188 runs.
+Warm STT median: Whisper Small 537 ms; Voz 241 ms. p95: 2034 ms / 522 ms.
+Synthetic WER: 8.17% / 2.43%; NOT evidence of human dictation accuracy.
+First Voz initialization after download: 55.27 s, then 0.29–0.40 s. One 60 s idle
+resume per engine: 864 ms / 227 ms. RSS sampling does not cover all accelerator RAM.
+Stable SDK 3.5.0 / model v0.1.0; Whisper uses unchanged production source, 0.13.2.
+
+Validated: both release builds, isolated benchmark `cargo check`, four scoring tests,
+and three full measurement rounds. Local raw evidence: `_tools/voz-benchmark/results/measured/`.
+Models: `/tmp/voxa-bench-small.bin`, `/tmp/voxa-voz-model`; benchmark-only Rust/CMake:
+`/tmp/voxa-bench-runtime/`. The first attempted run overlapped a build, was stopped,
+and is excluded (`results/preliminary/`). No running benchmark workers remain.
+
+Next: obtain 30 human German recordings and verified references (asked user for a
+local folder), rerun harness, then evaluate separate Voxa integration to measure
+final LLM text, actual stop-to-paste and full app memory. These remain unmeasured.
+Repository is read-only for this GitHub account; draft PR uses the `YerStev/voxa` fork.
 
 ## Active backlog — 4 perf issues (specs + GitHub issues, one per session)
 

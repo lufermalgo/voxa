@@ -1,0 +1,24 @@
+{
+  "originHash" : "4490b5cb6ddd4c9baedc6a6ad1fb70f12a9c2462ac6ab21943088fe3bc4c8961",
+  "pins" : [
+    {
+      "identity" : "desert-ant-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Desert-Ant-Labs/desert-ant-core.git",
+      "state" : {
+        "revision" : "ec1f2895369d072a8a16baa1ef0761862d4c87cf",
+        "version" : "3.5.0"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,6 @@
+.build/
+target/
+data/
+results/
+models/
+__pycache__/
