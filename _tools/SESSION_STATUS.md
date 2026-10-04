@@ -7,9 +7,9 @@
 | Field | Value |
 |---|---|
 | Current branch | `feature/issue-109-voz-whisper-benchmark` |
-| Status | `in-progress` |
+| Status | `awaiting-review` |
 | Files being touched | `_tools/voz-benchmark/`, `_tools/SESSION_STATUS.md` |
-| Pending PR | draft being prepared |
+| Pending PR | #110 (draft): https://github.com/lufermalgo/voxa/pull/110 |
 
 Isolated benchmark implemented; product code unchanged. Actual host: Apple M1 Pro,
 16 GB, macOS 26.6.2 (older M3 notes below are historical). Report:
@@ -29,7 +29,8 @@ and is excluded (`results/preliminary/`). No running benchmark workers remain.
 Next: obtain 30 human German recordings and verified references (asked user for a
 local folder), rerun harness, then evaluate separate Voxa integration to measure
 final LLM text, actual stop-to-paste and full app memory. These remain unmeasured.
-Repository is read-only for this GitHub account; draft PR uses the `YerStev/voxa` fork.
+Draft PR #110 targets upstream main from the `YerStev/voxa` fork (upstream read-only).
+Branch rebased on origin/main; next action requires real reference recordings and review.
 
 ## Active backlog — 4 perf issues (specs + GitHub issues, one per session)
 
